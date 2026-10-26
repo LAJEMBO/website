@@ -10,7 +10,8 @@ const msg=(id,t,s)=>{const e=E(id);if(!e)return;e.className='status '+t;e.textCo
 const rpc=async(name,body={})=>{const r=await fetch(U+'/rest/v1/rpc/'+name,{method:'POST',headers:headers(),body:JSON.stringify(body)});if(!r.ok){let x={};try{x=await r.json()}catch{}throw Error(x.message||x.error_description||'Unable to continue right now.')}const t=await r.text();return t?JSON.parse(t):null};
 const checked=id=>[...E(id).querySelectorAll('input:checked')].map(x=>x.value),n=id=>E(id).value===''?null:Number(E(id).value);
 const annualRent=()=>E('annualRent').value==='above'?n('customAnnualRent'):Number(E('annualRent').value||0);
-const setFees=()=>{const a=annualRent(),f=a>0?Math.round(a*.10):0;E('cautionDeposit').value=String(f);E('serviceCharge').value=String(f)};
+const successFeeField=document.createElement('div');successFeeField.className='field';successFeeField.innerHTML='<label>LAJEMBO Success Fee — 5% of annual rent (₦)</label><input id="successFee" readonly aria-readonly="true"><div class="fine">Payable only when a successful rental transaction is completed.</div>';E('serviceCharge').closest('.form-grid').insertAdjacentElement('afterend',successFeeField);
+const setFees=()=>{const a=annualRent(),f=a>0?Math.round(a*.10):0,s=a>0?Math.round(a*.05):0;E('cautionDeposit').value=String(f);E('serviceCharge').value=String(f);E('successFee').value=String(s)};
 E('state').value='Lagos';E('state').readOnly=true;
 E('annualRent').onchange=()=>{E('customRentField').classList.toggle('hidden',E('annualRent').value!=='above');setFees()};E('customAnnualRent').addEventListener('input',setFees);setFees();
 E('documentType').onchange=()=>{const t=E('documentType').value;E('passportCountryField').classList.toggle('hidden',t!=='international_passport');E('documentLabel').textContent=t==='nin'?'NIN':t==='voter_card'?"Voter's Card reference":'Passport number'};
