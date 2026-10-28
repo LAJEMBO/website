@@ -11,7 +11,7 @@
   const status = (kind, text) => { E('emailStatus').className = 'status ' + kind; E('emailStatus').textContent = text; };
   async function request(method = 'GET', body) {
     if (!token()) throw Error('Verify your mobile number first.');
-    const response = await fetch(base, {method, headers: {'Content-Type':'application/json', apikey:key, Authorization:'Bearer ' + token()}, ...(body ? {body:JSON.stringify(body)} : {})});
+    const response = await window.LajemboAuth.fetch(base, {method, headers: {'Content-Type':'application/json', apikey:key, Authorization:'Bearer ' + token()}, ...(body ? {body:JSON.stringify(body)} : {})});
     const data = await response.json();
     if (!response.ok) throw Error(data.msg || data.message || 'Unable to verify email. Please try again.');
     if (identity && data.id !== identity) throw Error('Your account session changed. Verify your mobile number again.');
@@ -44,5 +44,6 @@
     catch (error) { status('err',error.message); field.focus(); }
     finally { complete.disabled = false; }
   };
-  if (token()) request().then(user => { field.value = user.new_email || user.email || ''; }).catch(error => status('err',error.message));
+  window.LajemboAuth.ready.then(() => { if (token()) return request().then(user => { field.value = user.new_email || user.email || ''; }); }).catch(error => status('err',error.message));
 })();
+
