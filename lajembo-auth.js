@@ -74,6 +74,20 @@
   }
   async function signOut() {const {error}=await client.auth.signOut({scope:'local'});if(error)throw error;mirror(null);}
   window.LajemboAuth={client,ready,adoptSession,fetch:authorizedFetch,normalizePhone,setPassword,promptPassword,signIn,verifyRecovery,destination,signOut};
+  // Keep website password visibility consistent with the app, including new dialogs.
+  function decoratePasswords(){
+    document.querySelectorAll('input[type=password]').forEach(input=>{
+      if(input.dataset.visibilityControl)return;input.dataset.visibilityControl='true';
+      const toggle=document.createElement('button');toggle.type='button';toggle.textContent='Show';
+      const hide=()=>{input.type='password';toggle.textContent='Show';toggle.setAttribute('aria-label','Show password')};
+      hide();toggle.onclick=()=>{const show=input.type==='password';input.type=show?'text':'password';toggle.textContent=show?'Hide':'Show';toggle.setAttribute('aria-label',show?'Hide password':'Show password')};
+      input.addEventListener('blur',hide);input.form?.addEventListener('reset',hide);
+      document.addEventListener('visibilitychange',()=>{if(document.hidden)hide()});
+      input.insertAdjacentElement('afterend',toggle);
+    });
+  }
+  new MutationObserver(decoratePasswords).observe(document.documentElement,{childList:true,subtree:true});
+  decoratePasswords();
   function addControls() {
     const host=document.getElementById('phoneStep')||document.getElementById('authCard');
     if(host){const p=document.createElement('p');p.className='lajembo-auth-links';const a=document.createElement('a');a.href='login.html?return='+encodeURIComponent(location.pathname.split('/').pop());a.textContent='Already registered? Log in with your password';p.append(a);host.prepend(p);}
@@ -82,3 +96,4 @@
   }
   document.readyState==='loading'?document.addEventListener('DOMContentLoaded',addControls):addControls();
 })();
+
