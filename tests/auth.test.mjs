@@ -10,7 +10,9 @@ function fixture({session=null,route='home_seeker'}={}){
   const current=()=>session;
   const client={auth:{getSession:async()=>({data:{session},error:null}),onAuthStateChange:fn=>{onAuth=fn},getUser:async()=>({data:{user},error:null}),setSession:async tokens=>{session={...tokens,user};onAuth('SIGNED_IN',session);return{data:{session},error:null}},updateUser:async body=>{calls.push(['update',body]);return{error:null}},signInWithPassword:async body=>{calls.push(['login',body]);session={access_token:'fresh',refresh_token:'refresh',user};onAuth('SIGNED_IN',session);return{data:{session},error:null}},signOut:async()=>{session=null;onAuth('SIGNED_OUT',null);return{error:null}}},rpc:async name=>{calls.push(['rpc',name]);return{data:{account_type:route},error:null}},functions:{invoke:async(name,args)=>{calls.push(['verify',name,args]);return{data:{access_token:'access',refresh_token:'refresh'},error:null}}}};
   const window={supabase:{createClient:(_url,_key,options)=>{calls.push(['create',options]);return client}}};
-  vm.runInNewContext(source,{window,sessionStorage,document:{readyState:'loading',addEventListener(){}},location:{search:''},URLSearchParams,Headers,fetch:async(_input,options)=>{calls.push(['fetch',options]);return{ok:true}}});
+  // Auth is loaded together with browser password-visibility decoration.
+  class MutationObserver { observe(){} }
+  vm.runInNewContext(source,{window,sessionStorage,MutationObserver,document:{readyState:'loading',documentElement:{},querySelectorAll:()=>[],addEventListener(){}},location:{search:''},URLSearchParams,Headers,fetch:async(_input,options)=>{calls.push(['fetch',options]);return{ok:true}}});
   return {api:window.LajemboAuth,calls,sessionStorage,current};
 }
 test('website persists and refreshes one SDK session across legacy forms',async()=>{
