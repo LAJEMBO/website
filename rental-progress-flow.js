@@ -51,13 +51,31 @@
    if(result.error||!result.data?.signedUrl)throw Error(result.error?.message||'Secure evidence link could not be created.');
    const url=new URL(result.data.signedUrl);if(url.protocol!=='https:'&&!(url.protocol==='http:'&&url.hostname==='127.0.0.1'))throw Error('Invalid evidence link.');return url.href;
   }
+  async function conditionDraft(transactionId){
+   const result=await client.from('move_in_condition_records').select('notes,media_manifest').eq('transaction_id',transactionId).eq('record_type','renter_one_week_checklist').maybeSingle();
+   if(result.error)throw Error(result.error.message);return result.data;
+  }
+  async function uploadConditionEvidence(shownId,file){
+   const types={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','video/mp4':'mp4','video/webm':'webm','video/quicktime':'mov'};
+   if(!file||!types[file.type]||!file.size||file.size>26214400)throw Error('Choose a JPEG, PNG, WebP, MP4, WebM or MOV file no larger than 25 MB.');
+   const current=await selection();if(current?.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before uploading.');
+   const status=await rpc('get_my_move_in_protection_status',{p_transaction_id:shownId});if(status?.window_open!==true)throw Error('The reporting window is not open.');
+   const user=await client.auth.getUser();if(user.error||!user.data?.user?.id)throw Error('Sign in again before uploading evidence.');
+   const path=shownId+'/'+user.data.user.id+'/one_week_condition-'+window.crypto.randomUUID()+'.'+types[file.type];
+   const uploaded=await client.storage.from('transaction-evidence').upload(path,file,{contentType:file.type,upsert:false});
+   if(uploaded.error)throw Error(uploaded.error.message);
+   try{
+    const asset=await rpc('register_my_transaction_evidence',{p_transaction_id:shownId,p_evidence_type:'one_week_condition',p_storage_path:path});
+    if(!asset?.asset_id)throw Error('Evidence registration was not confirmed.');return{asset_id:asset.asset_id};
+   }catch(error){await client.storage.from('transaction-evidence').remove([path]);throw error;}
+  }
   async function protection(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});}
-  async function submitConditionCheck(shownId,notes){
+  async function submitConditionCheck(shownId,notes,manifest=[]){
    if(!notes?.trim())throw Error('Enter your condition notes before submitting.');
    const current=await selection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before submitting.');
    const status=await rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});
    if(status?.window_open!==true)throw Error('The seven-day condition reporting window is not open.');
-   const result=await rpc('submit_my_seven_day_condition_check',{p_transaction_id:current.transaction_id,p_notes:notes.trim(),p_media_manifest:[]});
+   const result=await rpc('submit_my_seven_day_condition_check',{p_transaction_id:current.transaction_id,p_notes:notes.trim(),p_media_manifest:manifest});
    if(result?.status!=='submitted'||!result.condition_record_id)throw Error('Condition checklist submission was not confirmed.');
    return result;
   }
@@ -80,7 +98,7 @@
    const result=await rpc('complete_my_move_in',{p_transaction_id:current.transaction_id});
    if(result?.status!=='completed')throw Error(result?.message||'Move-in completion was not confirmed.');return result;
   }
-  return{selection,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck};
+  return{selection,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
  }
  window.LajemboRentalProgress={create};
 })();

@@ -129,10 +129,18 @@
      const prior=(data.move_in_conditions||[]).find(r=>['renter_one_week_checklist','seven_day_renter_check'].includes(r.record_type));
      if(prior)card.append(el('p','Your checklist status · '+prior.status),el('p',prior.notes||''));
      if(protection.window_open===true&&(!prior||['draft','submitted','disputed'].includes(prior.status))){
-      const label=el('label','Condition notes'),notes=el('textarea');notes.value=prior?.notes||'';notes.rows=5;label.append(notes);card.append(label);
-      card.append(el('p','Describe the condition issues you found after move-in. This form saves written notes. Photo and video attachments are not yet available here.'));
+      const draft=prior?await flow.conditionDraft(data.transaction.id):null;
+      const attachments=[...(draft?.media_manifest||[])];
+      const label=el('label','Condition notes'),notes=el('textarea');notes.value=draft?.notes||prior?.notes||'';notes.rows=5;label.append(notes);card.append(label);
+      card.append(el('p','Describe the condition issues you found after move-in. Attach private photos or videos up to 25 MB each.'));
+      const fileLabel=el('label','Condition photo or video'),file=el('input');file.type='file';file.accept='image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime';fileLabel.append(file);card.append(fileLabel);
+      const count=el('p',attachments.length+' registered attachments selected');card.append(count);
+      button('Upload condition attachment',async()=>{
+       const asset=await flow.uploadConditionEvidence(data.transaction.id,file.files?.[0]);
+       attachments.push(asset);file.value='';count.textContent=attachments.length+' registered attachments selected';status.textContent='Attachment uploaded privately. Save the checklist to include it in your condition record.';
+      },card);
       button('Save seven-day condition checklist',async()=>{
-       await flow.submitConditionCheck(data.transaction.id,notes.value);
+       await flow.submitConditionCheck(data.transaction.id,notes.value,attachments);
        await transaction();status.textContent='Your seven-day condition checklist was saved to the tenancy record.';
       },card);
      }else card.append(el('p',protection.window_open?'Your existing checklist is available above.':'The reporting window has closed. Your existing tenancy record remains available.'));

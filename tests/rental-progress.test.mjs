@@ -112,3 +112,16 @@ test('checklist submission needs server confirmation and preserves server errors
  await assert.rejects(protectionFixture({result:null}).flow.submitConditionCheck('transaction','Issue'),/not confirmed/);
  await assert.rejects(protectionFixture({error:'The one-week window has closed'}).flow.submitConditionCheck('transaction','Issue'),/window has closed/);
 });
+function uploadFixture({registerError=false}={}){
+ const calls=[],window={crypto:{randomUUID:()=> 'random'}};vm.runInNewContext(source,{window});
+ const flow=window.LajemboRentalProgress.create({rpc:async(name,args)=>{calls.push([name,args]);return name==='get_my_selection_progress'?{data:shown}:name==='get_my_move_in_protection_status'?{data:{window_open:true}}:registerError?{error:{message:'Registration rejected'}}:{data:{asset_id:'asset'}};},auth:{getUser:async()=>({data:{user:{id:'renter'}}})},storage:{from:()=>({upload:async(path,file,options)=>{calls.push(['upload',{path,options}]);return{};},remove:async(paths)=>{calls.push(['remove',paths]);return{};}})}});return{flow,calls};
+}
+test('condition upload rejects invalid files and registers only private transaction uploads',async()=>{
+ const f=uploadFixture();for(const file of [null,{type:'text/html',size:10},{type:'video/mp4',size:26214401}])await assert.rejects(f.flow.uploadConditionEvidence('transaction',file),/Choose/);
+ assert.equal(f.calls.length,0);const asset=await f.flow.uploadConditionEvidence('transaction',{type:'video/mp4',size:1024});assert.equal(asset.asset_id,'asset');
+ assert.equal(f.calls.find(([n])=>n==='upload')[1].path,'transaction/renter/one_week_condition-random.mp4');assert.equal(f.calls.at(-1)[1].p_evidence_type,'one_week_condition');
+ const rejected=uploadFixture({registerError:true});await assert.rejects(rejected.flow.uploadConditionEvidence('transaction',{type:'image/jpeg',size:1024}),/Registration rejected/);assert.equal(rejected.calls.at(-1)[0],'remove');
+});
+test('checklist submission includes registered attachments without client storage paths',async()=>{
+ const f=protectionFixture();await f.flow.submitConditionCheck('transaction','Notes',[{asset_id:'asset'}]);assert.equal(JSON.stringify(f.calls.at(-1)[1].p_media_manifest),JSON.stringify([{asset_id:'asset'}]));
+});
