@@ -84,8 +84,8 @@ test('completion requires current transaction, refreshed readiness and explicit 
 });
 function evidenceFixture(){
  const calls=[],window={};vm.runInNewContext(source,{window,URL});
- const record={id:'condition',notes:'Wall crack',status:'submitted',submitted_at:'today',media_manifest:[{asset_id:'asset'}]};
- const flow=window.LajemboRentalProgress.create({from:()=>({select:()=>({eq:()=>({eq:()=>({single:async()=>({data:record,error:null})})})})}),rpc:async(name,args)=>{calls.push([name,args]);return{data:name==='get_my_selection_progress'?shown:name==='get_my_transaction_workspace'?{transaction:{id:'transaction'},move_in_conditions:[{id:'condition',record_type:'pre_move_in',status:'submitted',media_count:1}]}:name==='get_my_transaction_evidence'?[{asset_id:'asset',mime_type:'image/jpeg'}]:name==='get_my_transaction_evidence_access'?{bucket:'transaction-evidence',storage_path:'transaction/asset'}:null,error:null};},storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'https://project.supabase.co/secure'},error:null})})}});
+ const record={id:'condition',record_type:'pre_move_in',notes:'Wall crack',status:'submitted',submitted_at:'today',media_manifest:[{asset_id:'asset'}]};
+ const flow=window.LajemboRentalProgress.create({from:()=>({select:()=>({eq:()=>({eq:()=>({single:async()=>({data:record,error:null})})})})}),rpc:async(name,args)=>{calls.push([name,args]);return{data:name==='get_my_selection_progress'?shown:name==='get_my_transaction_workspace'?{transaction:{id:'transaction'},move_in_conditions:[{id:'condition',record_type:record.record_type,status:'submitted',media_count:1}]}:name==='get_my_transaction_evidence'?[{asset_id:'asset',mime_type:'image/jpeg'}]:name==='get_my_transaction_evidence_access'?{bucket:'transaction-evidence',storage_path:'transaction/asset'}:null,error:null};},storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'https://project.supabase.co/secure'},error:null})})}});
  return{flow,record,calls};
 }
 test('condition evidence is tied to the current record and acknowledgement rechecks changed evidence',async()=>{
@@ -124,4 +124,9 @@ test('condition upload rejects invalid files and registers only private transact
 });
 test('checklist submission includes registered attachments without client storage paths',async()=>{
  const f=protectionFixture();await f.flow.submitConditionCheck('transaction','Notes',[{asset_id:'asset'}]);assert.equal(JSON.stringify(f.calls.at(-1)[1].p_media_manifest),JSON.stringify([{asset_id:'asset'}]));
+});
+
+test('saved seven-day attachments use their own evidence category and reject unsupported record types',async()=>{
+ const f=evidenceFixture();f.record.record_type='renter_one_week_checklist';await f.flow.conditionEvidence('condition');const list=f.calls.find(([n])=>n==='get_my_transaction_evidence');assert.equal(list[1].p_evidence_type,'one_week_condition');await f.flow.evidenceLink('condition','asset');
+ f.record.record_type='unknown';await assert.rejects(f.flow.conditionEvidence('condition'),/not part|Unsupported/);
 });

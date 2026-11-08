@@ -128,6 +128,15 @@
      card.append(el('p',protection.message),el('p','Reporting deadline · '+new Date(protection.condition_check_deadline).toLocaleString()),el('p','Issues recorded · '+protection.issues_reported));
      const prior=(data.move_in_conditions||[]).find(r=>['renter_one_week_checklist','seven_day_renter_check'].includes(r.record_type));
      if(prior)card.append(el('p','Your checklist status · '+prior.status),el('p',prior.notes||''));
+     if(prior?.media_count>0){
+      try{
+       const evidence=await flow.conditionEvidence(prior.id);
+       for(const [index,asset] of evidence.assets.entries())button('Review saved '+(asset.mime_type?.startsWith('video/')?'video':'attachment')+' '+(index+1),async()=>{
+        const url=await flow.evidenceLink(prior.id,asset.asset_id),link=el('a','Open saved condition attachment '+(index+1)+' (five-minute link)');
+        link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.className='info-button';card.append(link);
+       },card);
+      }catch(error){card.append(el('p','Saved attachments could not be loaded. '+error.message));}
+     }
      if(protection.window_open===true&&(!prior||['draft','submitted','disputed'].includes(prior.status))){
       const draft=prior?await flow.conditionDraft(data.transaction.id):null;
       const attachments=[...(draft?.media_manifest||[])];

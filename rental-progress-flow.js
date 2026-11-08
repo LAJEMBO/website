@@ -33,12 +33,14 @@
   }
   async function conditionEvidence(id){
    const current=await workspace();
-   if(!current?.move_in_conditions?.some(r=>r.id===id&&r.record_type==='pre_move_in'))throw Error('Condition record is not part of your current transaction.');
-   const result=await client.from('move_in_condition_records').select('id,notes,status,submitted_at,media_manifest').eq('id',id).eq('transaction_id',current.transaction.id).single();
+   if(!current?.move_in_conditions?.some(r=>r.id===id&&['pre_move_in','renter_one_week_checklist','seven_day_renter_check'].includes(r.record_type)))throw Error('Condition record is not part of your current transaction.');
+   const result=await client.from('move_in_condition_records').select('id,record_type,notes,status,submitted_at,media_manifest').eq('id',id).eq('transaction_id',current.transaction.id).single();
    if(result.error||!result.data)throw Error(result.error?.message||'Condition evidence is unavailable.');
    const record=result.data,manifest=record.media_manifest;
+   const evidenceType=record.record_type==='pre_move_in'?'pre_move_in':['renter_one_week_checklist','seven_day_renter_check'].includes(record.record_type)?'one_week_condition':null;
+   if(!evidenceType)throw Error('Unsupported condition record type.');
    if(!Array.isArray(manifest)||manifest.some(a=>!a?.asset_id)||new Set(manifest.map(a=>a.asset_id)).size!==manifest.length)throw Error('Condition evidence references are incomplete.');
-   const available=await rpc('get_my_transaction_evidence',{p_transaction_id:current.transaction.id,p_evidence_type:'pre_move_in'});
+   const available=await rpc('get_my_transaction_evidence',{p_transaction_id:current.transaction.id,p_evidence_type:evidenceType});
    const assets=manifest.map(a=>available?.find(b=>b.asset_id===a.asset_id));
    if(assets.some(a=>!a))throw Error('A condition attachment is unavailable. Please request a corrected record.');
    return{assets,fingerprint:JSON.stringify([record.id,record.notes,record.status,record.submitted_at,manifest])};
