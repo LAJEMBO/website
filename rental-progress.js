@@ -119,6 +119,26 @@
     },move);
    }
   }catch(error){move.append(el('p','Move-in readiness is unavailable. '+error.message));}
+  if(data.transaction.status==='completed'){
+   const card=el('section');card.className='info-card';card.append(el('h3','Seven-day move-in condition record'));body.append(card);
+   try{
+    const protection=await flow.protection();
+    if(!protection)card.append(el('p','The condition reporting window is not available yet.'));
+    else{
+     card.append(el('p',protection.message),el('p','Reporting deadline · '+new Date(protection.condition_check_deadline).toLocaleString()),el('p','Issues recorded · '+protection.issues_reported));
+     const prior=(data.move_in_conditions||[]).find(r=>['renter_one_week_checklist','seven_day_renter_check'].includes(r.record_type));
+     if(prior)card.append(el('p','Your checklist status · '+prior.status),el('p',prior.notes||''));
+     if(protection.window_open===true&&(!prior||['draft','submitted','disputed'].includes(prior.status))){
+      const label=el('label','Condition notes'),notes=el('textarea');notes.value=prior?.notes||'';notes.rows=5;label.append(notes);card.append(label);
+      card.append(el('p','Describe the condition issues you found after move-in. This form saves written notes. Photo and video attachments are not yet available here.'));
+      button('Save seven-day condition checklist',async()=>{
+       await flow.submitConditionCheck(data.transaction.id,notes.value);
+       await transaction();status.textContent='Your seven-day condition checklist was saved to the tenancy record.';
+      },card);
+     }else card.append(el('p',protection.window_open?'Your existing checklist is available above.':'The reporting window has closed. Your existing tenancy record remains available.'));
+    }
+   }catch(error){card.append(el('p','Unable to load move-in protection. '+error.message));}
+  }
   button('Refresh transaction details',transaction);button('Back to selection',load);
  }
  auth.ready.then(()=>run(load)).catch(()=>{status.textContent='Unable to restore your session. Log in again.';});

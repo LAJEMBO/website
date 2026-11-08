@@ -98,3 +98,17 @@ test('condition evidence is tied to the current record and acknowledgement reche
  f.record.notes='New condition notes';await assert.rejects(f.flow.respond('condition','condition','acknowledge','',reviewed),/Review all/);
  f.record.media_manifest=[{asset_id:'missing'}];await assert.rejects(f.flow.conditionEvidence('condition'),/unavailable/);
 });
+function protectionFixture({windowOpen=true,result={status:'submitted',condition_record_id:'record'},error=null}={}){
+ const calls=[],window={};vm.runInNewContext(source,{window});const flow=window.LajemboRentalProgress.create({rpc:async(name,args)=>{
+ calls.push([name,args]);if(name==='get_my_selection_progress')return{data:shown};if(name==='get_my_move_in_protection_status')return{data:{window_open:windowOpen}};
+ return{data:result,error:error?{message:error}:null};}});return{flow,calls};
+}
+test('seven-day reporting uses the current transaction and requires an open server window',async()=>{
+ const f=protectionFixture();await assert.rejects(f.flow.submitConditionCheck('transaction',' '),/notes/);await assert.rejects(f.flow.submitConditionCheck('foreign','Issue'),/changed/);
+ for(const windowOpen of [false,null,undefined]){const closed=protectionFixture({windowOpen:windowOpen===undefined?null:windowOpen});await assert.rejects(closed.flow.submitConditionCheck('transaction','Issue'),/not open/);assert.equal(closed.calls.some(([n])=>n==='submit_my_seven_day_condition_check'),false);}
+ await f.flow.submitConditionCheck('transaction',' Wall crack ');assert.equal(JSON.stringify(f.calls.at(-1)),JSON.stringify(['submit_my_seven_day_condition_check',{p_transaction_id:'transaction',p_notes:'Wall crack',p_media_manifest:[]}]));
+});
+test('checklist submission needs server confirmation and preserves server errors',async()=>{
+ await assert.rejects(protectionFixture({result:null}).flow.submitConditionCheck('transaction','Issue'),/not confirmed/);
+ await assert.rejects(protectionFixture({error:'The one-week window has closed'}).flow.submitConditionCheck('transaction','Issue'),/window has closed/);
+});

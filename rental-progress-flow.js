@@ -51,6 +51,16 @@
    if(result.error||!result.data?.signedUrl)throw Error(result.error?.message||'Secure evidence link could not be created.');
    const url=new URL(result.data.signedUrl);if(url.protocol!=='https:'&&!(url.protocol==='http:'&&url.hostname==='127.0.0.1'))throw Error('Invalid evidence link.');return url.href;
   }
+  async function protection(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});}
+  async function submitConditionCheck(shownId,notes){
+   if(!notes?.trim())throw Error('Enter your condition notes before submitting.');
+   const current=await selection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before submitting.');
+   const status=await rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});
+   if(status?.window_open!==true)throw Error('The seven-day condition reporting window is not open.');
+   const result=await rpc('submit_my_seven_day_condition_check',{p_transaction_id:current.transaction_id,p_notes:notes.trim(),p_media_manifest:[]});
+   if(result?.status!=='submitted'||!result.condition_record_id)throw Error('Condition checklist submission was not confirmed.');
+   return result;
+  }
   async function readiness(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_readiness',{p_transaction_id:current.transaction_id});}
   async function respond(kind,id,action,note='',reviewed=null){
    if(!['condition','handover'].includes(kind)||!['acknowledge','dispute'].includes(action))throw Error('Invalid move-in response.');
@@ -70,7 +80,7 @@
    const result=await rpc('complete_my_move_in',{p_transaction_id:current.transaction_id});
    if(result?.status!=='completed')throw Error(result?.message||'Move-in completion was not confirmed.');return result;
   }
-  return{selection,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink};
+  return{selection,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck};
  }
  window.LajemboRentalProgress={create};
 })();
