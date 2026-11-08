@@ -56,7 +56,22 @@
  }
  const progress=el('a','View rental selection and costs');progress.href='rental-progress.html';root.insertBefore(progress,body);
  const appointments=el('button','View saved appointments');appointments.type='button';appointments.className='info-button';appointments.onclick=()=>run(savedAppointments);root.insertBefore(appointments,body);
- async function load(){status.textContent='Loading your saved choices…';items=await flow.load();selected=items.filter(i=>i.renter_decision==='selected_for_viewing').map(i=>i.listing_id);status.textContent='';if(new URLSearchParams(location.search).get('step')==='checkout'&&locked())await checkout();else choices();}
+ async function load(){
+  status.textContent='Loading your saved choices…';
+  items=await flow.load();
+  selected=items.filter(i=>i.renter_decision==='selected_for_viewing').map(i=>i.listing_id);
+  if(!locked()){
+   try{
+    const draft=JSON.parse(sessionStorage.getItem('lajembo_viewing_review')||'null');
+    if(draft?.shortlistId===items[0]?.shortlist_id&&Array.isArray(draft.listingIds)&&
+      draft.listingIds.length<=5&&new Set(draft.listingIds).size===draft.listingIds.length&&
+      draft.listingIds.every(id=>items.some(item=>item.listing_id===id)))selected=draft.listingIds;
+   }catch{sessionStorage.removeItem('lajembo_viewing_review');}
+  }
+  status.textContent='';
+  if(new URLSearchParams(location.search).get('step')==='checkout'&&locked())await checkout();
+  else choices();
+ }
  async function checkout(){const p=await flow.packageFor(items[0].shortlist_id);body.replaceChildren();body.append(el('h2','Step 2 — Viewing package'),el('p','Payment confirmations use your registered email and SMS number. A payment receipt and a booked appointment are separate confirmations. If a message is delayed, check your package status here before paying again.'));
   if(p?.status==='active'){status.textContent='Your viewing package is active. Appointment eligibility is checked again when you request and confirm a time.';button('Choose viewing availability',availability);return;}
   const rows=await flow.checkout(),c=rows?.[0];status.textContent=c?`Viewing package: ₦${Number(c.amount).toLocaleString('en-NG')} · Payment status: ${c.payment_status}`:'No current payment checkout was found. Return to saved choices to resume.';body.append(el('p','One ₦7,500 package covers up to five property viewings. Online payment is not available until LAJEMBO activates production payment routing. No appointment has been booked.'));button('Refresh payment status',checkout);button('Back to saved choices',choices);
