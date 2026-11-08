@@ -42,6 +42,7 @@
  }catch(e){status.textContent=e.message||'Unable to load matches. Try again.'}finally{refresh.disabled=false}}
  refresh.onclick=load;await load();
  }
+ window.LajemboPropertyMedia={gallery};
  function scan(){document.querySelectorAll('.property[data-listing]').forEach(provider)}
  if(document.getElementById('properties')){new MutationObserver(scan).observe(document.getElementById('properties'),{childList:true,subtree:true});scan()}
  A.ready.then(rentals).catch(()=>{});
