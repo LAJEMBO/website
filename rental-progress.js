@@ -73,6 +73,42 @@
      el('p','Issued '+new Date(receipt.issued_at).toLocaleString()));records.append(row);
    }
   }catch(error){records.append(el('p','Records could not be loaded. '+error.message));}
+  const move=el('section');move.className='info-card';move.append(el('h3','Move-in and possession'));body.append(move);
+  function responseForm(kind,record){
+   const label=el('label','Reason for dispute (required when disputing)'),note=el('textarea');label.append(note);move.append(label);
+   button('Acknowledge '+(kind==='condition'?'condition record':'possession handover'),async()=>{
+    if(kind==='condition'&&record.media_count>0)throw Error('Attached condition evidence must be available for review before acknowledgement.');
+    if(!window.confirm('Confirm that you have reviewed and agree with this '+(kind==='condition'?'condition record':'possession handover')+'?'))return;
+    await flow.respond(kind,record.id,'acknowledge');await transaction();status.textContent='Your acknowledgement was recorded.';
+   },move);
+   button('Dispute '+(kind==='condition'?'condition record':'possession handover'),async()=>{
+    await flow.respond(kind,record.id,'dispute',note.value);await transaction();status.textContent='Your dispute was recorded.';
+   },move);
+  }
+  for(const record of data.move_in_conditions||[]){
+   if(record.record_type!=='pre_move_in')continue;
+   move.append(el('h4','Pre-move-in condition'),el('p','Status · '+record.status),el('p',record.notes||'No condition notes supplied.'),el('p','Attached evidence items · '+(record.media_count||0)));
+   if(record.media_count>0)move.append(el('p','Attached evidence review is not yet available on this page. Acknowledgement remains unavailable until it is connected.'));
+   if(record.status==='submitted')responseForm('condition',record);
+  }
+  if(data.handover){
+   const h=data.handover;move.append(el('h4','Possession handover'),el('p','Status · '+h.handover_status),el('p','Scheduled · '+(h.scheduled_for?new Date(h.scheduled_for).toLocaleString():'Pending')),el('p','Keys/access credentials · '+(h.keys_count??0)),el('p','Provider acknowledgement · '+(h.provider_acknowledged_at?'Recorded':'Pending')));
+   if(h.renter_acknowledged_at)move.append(el('p','Your possession acknowledgement is recorded.'));
+   else if(['ready','disputed'].includes(h.handover_status))responseForm('handover',h);
+  }
+  try{
+   const ready=await flow.readiness();
+   if(ready){
+    move.append(el('h4','Move-in readiness'));
+    for(const [label,key] of [['Agreement fully signed','agreement_fully_signed'],['Handover scheduled','handover_scheduled'],['Keys recorded','keys_recorded'],['Meter readings recorded','meter_readings_recorded'],['Condition acknowledged','condition_record_acknowledged'],['Renter handover acknowledged','renter_handover_acknowledged'],['Provider handover acknowledged','provider_handover_acknowledged']])move.append(el('p',label+' · '+(ready[key]?'Complete':'Pending')));
+    move.append(el('p','Open condition issues · '+ready.open_condition_issues));
+    if(data.transaction.status==='completed')move.append(el('p','Move-in is complete.'));
+    else if(ready.ready_for_clean_completion)button('Complete move-in',async()=>{
+     if(!window.confirm('Confirm you are ready to complete move-in?'))return;
+     await flow.completeMoveIn(data.transaction.id);await transaction();status.textContent='Move-in completion was confirmed.';
+    },move);
+   }
+  }catch(error){move.append(el('p','Move-in readiness is unavailable. '+error.message));}
   button('Refresh transaction details',transaction);button('Back to selection',load);
  }
  auth.ready.then(()=>run(load)).catch(()=>{status.textContent='Unable to restore your session. Log in again.';});

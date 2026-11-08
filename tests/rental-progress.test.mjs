@@ -61,3 +61,24 @@ test('private document links require current transaction membership and server a
 test('receipt list is restricted to the current selected transaction',async()=>{
  const f=recordsFixture();const rows=await f.flow.receipts();assert.equal(rows[0].amount,100000);assert.equal(JSON.stringify(f.calls.at(-1)),JSON.stringify(['get_my_payment_receipts',{p_transaction_id:'transaction'}]));
 });
+function moveFixture({record={id:'condition',record_type:'pre_move_in',status:'submitted'},handover={id:'handover',handover_status:'ready'},ready=true,confirmed=true,denied=false}={}){
+ const window={},calls=[];vm.runInNewContext(source,{window});
+ const flow=window.LajemboRentalProgress.create({rpc:async(name,args)=>{calls.push([name,args]);
+ if(denied&&name.startsWith('respond_'))return{error:{message:'Not authorized'}};
+ return{data:name==='get_my_selection_progress'?shown:name==='get_my_transaction_workspace'?{transaction:{id:'transaction'},move_in_conditions:[record],handover}:name==='get_my_move_in_readiness'?{ready_for_clean_completion:ready}:name==='complete_my_move_in'?{status:confirmed?'completed':'pending'}:null,error:null};}});return{flow,calls};
+}
+test('condition and handover responses require current records, valid actions and dispute reasons',async()=>{
+ const f=moveFixture();await assert.rejects(f.flow.respond('condition','condition','dispute','  '),/reason/);
+ await assert.rejects(f.flow.respond('condition','foreign','acknowledge'),/changed/);
+ await assert.rejects(f.flow.respond('other','condition','acknowledge'),/Invalid/);
+ await f.flow.respond('condition','condition','dispute',' Crack on wall ');
+ assert.equal(JSON.stringify(f.calls.at(-1)),JSON.stringify(['respond_to_my_move_in_condition',{p_condition_record_id:'condition',p_action:'dispute',p_note:'Crack on wall'}]));
+ await f.flow.respond('handover','handover','acknowledge');assert.equal(f.calls.at(-1)[0],'respond_to_my_possession_handover');
+ await assert.rejects(moveFixture({record:{id:'condition',record_type:'pre_move_in',status:'acknowledged'}}).flow.respond('condition','condition','acknowledge'),/changed/);
+ await assert.rejects(moveFixture({denied:true}).flow.respond('handover','handover','acknowledge'),/Not authorized/);
+});
+test('completion requires current transaction, refreshed readiness and explicit server confirmation',async()=>{
+ const f=moveFixture();await assert.rejects(f.flow.completeMoveIn('foreign'),/changed/);await f.flow.completeMoveIn('transaction');assert.equal(f.calls.at(-1)[0],'complete_my_move_in');
+ const pending=moveFixture({ready:false});await assert.rejects(pending.flow.completeMoveIn('transaction'),/pending/);assert.equal(pending.calls.some(([n])=>n==='complete_my_move_in'),false);
+ await assert.rejects(moveFixture({confirmed:false}).flow.completeMoveIn('transaction'),/not confirmed/);
+});
