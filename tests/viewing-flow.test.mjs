@@ -34,3 +34,38 @@ test('website never reports a booking without explicit server confirmation',asyn
  for(const result of [{data:null,error:{message:'Time is no longer available'}},{data:null,error:null},{data:{status:'proposed'},error:null}])await assert.rejects(window.LajemboViewing.create({rpc:async()=>result}).confirmTime('proposal'));
  assert.equal((await window.LajemboViewing.create({rpc:async()=>({data:{status:'confirmed'},error:null})}).confirmTime('proposal')).status,'confirmed');
 });
+
+test('viewing-day actions send only route and viewing identifiers and propagate server denials',async()=>{
+ const calls=[],window={};
+ vm.runInNewContext(source,{window,Date,Number,Set});
+ const flow=window.LajemboViewing.create({rpc:async(name,args)=>{calls.push([name,args]);return{data:null,error:{message:'Check-in is unavailable'}};}});
+ await assert.rejects(flow.checkInDay('route'),/unavailable/);
+ await assert.rejects(flow.checkInProperty('viewing'),/unavailable/);
+ assert.equal(JSON.stringify(calls),JSON.stringify([
+  ['renter_confirm_viewing_day_check_in',{p_route_id:'route'}],
+  ['renter_viewing_check_in',{p_viewing_id:'viewing'}],
+ ]));
+});
+
+test('website displays exact addresses only after explicit server release',async()=>{
+ const window={};vm.runInNewContext(source,{window,Date,Number,Set});
+ for(const data of [null,{released:false,exact_address:'private'},{released:'true',exact_address:'private'}]){
+  const flow=window.LajemboViewing.create({rpc:async()=>({data,error:null})});
+  assert.equal(await flow.releasedAddress('viewing'),'Address has not been released yet.');
+ }
+ const flow=window.LajemboViewing.create({rpc:async()=>({data:{released:true,exact_address:'Released address',meeting_instruction:'Meet at gate'},error:null})});
+ assert.equal(await flow.releasedAddress('viewing'),'Released address\nMeet at gate');
+});
+
+test('post-viewing decisions require a completed viewing and reasons and preserve server authorization',async()=>{
+ const calls=[],window={};vm.runInNewContext(source,{window,Date,Number,Set});
+ const flow=window.LajemboViewing.create({rpc:async(name,args)=>{calls.push([name,args]);return{data:null,error:{message:'Viewing does not belong to this renter'}};}});
+ await assert.rejects(flow.recordDecision({viewing_id:'v',viewing_status:'scheduled'},'interested',null,'',null),/Complete the viewing/);
+ const stop={viewing_id:'v',viewing_status:'completed'};
+ await assert.rejects(flow.recordDecision(stop,'maybe',null,'',null),/main reason/);
+ await assert.rejects(flow.recordDecision(stop,'not_interested','other',' ',null),/Explain/);
+ assert.equal(calls.length,0);
+ await assert.rejects(flow.recordDecision(stop,'interested','price_too_high','stale',4),/does not belong/);
+ assert.equal(calls[0][0],'record_my_post_viewing_decision');
+ assert.equal(JSON.stringify(calls[0][1]),JSON.stringify({p_viewing_id:'v',p_decision:'interested',p_primary_reason_code:null,p_additional_reason_codes:[],p_other_note:null,p_rating:4}));
+});

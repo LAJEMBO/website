@@ -20,7 +20,23 @@
    if(!sid||selected.length<1||selected.length>5||new Set(selected).size!==selected.length||selected.some(id=>!items.some(i=>i.listing_id===id&&i.shortlist_id===sid)))return{saved,error:'Choose 1–5 homes from this shortlist.'};
    try{if(!saved){await rpc('set_my_shortlist_viewing_choices',{p_shortlist_id:sid,p_listing_ids:selected});saved=true;}const p=await packageFor(sid);if(p?.status!=='active')await rpc('start_my_viewing_checkout',{p_shortlist_id:sid});return{saved,error:null};}catch(e){return{saved,error:e.message||'Unable to continue. Refresh your saved choices and retry.'};}
   }
-  return {load,confirm,packageFor,checkout:()=>rpc('get_my_viewing_payment_checkout'),windows:()=>rpc('get_my_viewing_availability'),saveWindow:(date,start,end)=>{const w=viewingWindow(date,start,end);return rpc('set_my_viewing_availability',{p_starts_at:w.start,p_ends_at:w.end});},proposals:async sid=>{const p=await rpc('prepare_my_viewing_schedule',{p_shortlist_id:sid});if(!p?.cluster_id)throw Error('No schedule is ready. Please retry later.');return rpc('get_my_viewing_schedule_proposals',{p_cluster_id:p.cluster_id});},confirmTime:async id=>{const result=await rpc('confirm_my_viewing_schedule',{p_proposal_id:id});if(result?.status!=='confirmed')throw Error('The appointment was not confirmed. Check saved appointments before retrying.');return result;},viewingDay:()=>rpc('get_my_viewing_day')};
+  async function recordDecision(stop,decision,reason,otherNote,rating) {
+   if(!stop?.viewing_id||stop.viewing_status!=='completed')throw Error('Complete the viewing before recording a decision.');
+   if(!['interested','maybe','not_interested'].includes(decision))throw Error('Choose your decision.');
+   if(decision!=='interested'&&!reason)throw Error('Choose the main reason.');
+   if(decision!=='interested'&&reason==='other'&&!otherNote?.trim())throw Error('Explain the other reason.');
+   return rpc('record_my_post_viewing_decision',{p_viewing_id:stop.viewing_id,p_decision:decision,p_primary_reason_code:decision==='interested'?null:reason,p_additional_reason_codes:[],p_other_note:decision!=='interested'&&reason==='other'?otherNote.trim():null,p_rating:rating});
+  }
+  async function releasedAddress(viewingId){
+   const result=await rpc('get_my_released_viewing_address',{p_viewing_id:viewingId});
+   return result?.released===true&&typeof result.exact_address==='string'
+    ? [result.exact_address,result.meeting_instruction].filter(Boolean).join('\n')
+    : result?.message||'Address has not been released yet.';
+  }
+  return {load,confirm,packageFor,recordDecision,releasedAddress,
+   checkInDay:routeId=>rpc('renter_confirm_viewing_day_check_in',{p_route_id:routeId}),
+   checkInProperty:viewingId=>rpc('renter_viewing_check_in',{p_viewing_id:viewingId}),
+   checkout:()=>rpc('get_my_viewing_payment_checkout'),windows:()=>rpc('get_my_viewing_availability'),saveWindow:(date,start,end)=>{const w=viewingWindow(date,start,end);return rpc('set_my_viewing_availability',{p_starts_at:w.start,p_ends_at:w.end});},proposals:async sid=>{const p=await rpc('prepare_my_viewing_schedule',{p_shortlist_id:sid});if(!p?.cluster_id)throw Error('No schedule is ready. Please retry later.');return rpc('get_my_viewing_schedule_proposals',{p_cluster_id:p.cluster_id});},confirmTime:async id=>{const result=await rpc('confirm_my_viewing_schedule',{p_proposal_id:id});if(result?.status!=='confirmed')throw Error('The appointment was not confirmed. Check saved appointments before retrying.');return result;},viewingDay:()=>rpc('get_my_viewing_day')};
  }
  window.LajemboViewing={create,times,viewingWindow,format};
 })();
