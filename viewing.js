@@ -52,6 +52,7 @@
   });
   button('Back to saved appointments',savedAppointments);
  }
+ const progress=el('a','View rental selection and costs');progress.href='rental-progress.html';root.insertBefore(progress,body);
  const appointments=el('button','View saved appointments');appointments.type='button';appointments.className='info-button';appointments.onclick=()=>run(savedAppointments);root.insertBefore(appointments,body);
  async function load(){status.textContent='Loading your saved choices…';items=await flow.load();selected=items.filter(i=>i.renter_decision==='selected_for_viewing').map(i=>i.listing_id);review=false;status.textContent='';choices();}
  async function checkout(){const p=await flow.packageFor(items[0].shortlist_id);body.replaceChildren();body.append(el('h2','Step 2 — Viewing package'),el('p','Payment confirmations use your registered email and SMS number. A payment receipt and a booked appointment are separate confirmations. If a message is delayed, check your package status here before paying again.'));
