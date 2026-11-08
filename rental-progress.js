@@ -74,12 +74,12 @@
    }
   }catch(error){records.append(el('p','Records could not be loaded. '+error.message));}
   const move=el('section');move.className='info-card';move.append(el('h3','Move-in and possession'));body.append(move);
-  function responseForm(kind,record){
+  function responseForm(kind,record,reviewed=null){
    const label=el('label','Reason for dispute (required when disputing)'),note=el('textarea');label.append(note);move.append(label);
    button('Acknowledge '+(kind==='condition'?'condition record':'possession handover'),async()=>{
-    if(kind==='condition'&&record.media_count>0)throw Error('Attached condition evidence must be available for review before acknowledgement.');
+    if(kind==='condition'&&record.media_count>0&&(!reviewed||reviewed.assets.some(a=>!reviewed.opened.includes(a.asset_id))))throw Error('Open all attached condition evidence before acknowledging.');
     if(!window.confirm('Confirm that you have reviewed and agree with this '+(kind==='condition'?'condition record':'possession handover')+'?'))return;
-    await flow.respond(kind,record.id,'acknowledge');await transaction();status.textContent='Your acknowledgement was recorded.';
+    await flow.respond(kind,record.id,'acknowledge','',reviewed);await transaction();status.textContent='Your acknowledgement was recorded.';
    },move);
    button('Dispute '+(kind==='condition'?'condition record':'possession handover'),async()=>{
     await flow.respond(kind,record.id,'dispute',note.value);await transaction();status.textContent='Your dispute was recorded.';
@@ -88,8 +88,18 @@
   for(const record of data.move_in_conditions||[]){
    if(record.record_type!=='pre_move_in')continue;
    move.append(el('h4','Pre-move-in condition'),el('p','Status · '+record.status),el('p',record.notes||'No condition notes supplied.'),el('p','Attached evidence items · '+(record.media_count||0)));
-   if(record.media_count>0)move.append(el('p','Attached evidence review is not yet available on this page. Acknowledgement remains unavailable until it is connected.'));
-   if(record.status==='submitted')responseForm('condition',record);
+   let reviewed=null;
+   if(record.media_count>0){
+    try{
+     const evidence=await flow.conditionEvidence(record.id);reviewed={...evidence,opened:[]};
+     for(const [index,asset] of evidence.assets.entries())button('Review condition attachment '+(index+1),async()=>{
+      const url=await flow.evidenceLink(record.id,asset.asset_id);
+      const link=el('a','Open condition attachment '+(index+1)+' (five-minute link)');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.className='info-button';
+      link.onclick=()=>{if(!reviewed.opened.includes(asset.asset_id))reviewed.opened.push(asset.asset_id);};move.append(link);
+     },move);
+    }catch(error){move.append(el('p','Evidence review is unavailable. '+error.message));}
+   }
+   if(record.status==='submitted')responseForm('condition',record,reviewed);
   }
   if(data.handover){
    const h=data.handover;move.append(el('h4','Possession handover'),el('p','Status · '+h.handover_status),el('p','Scheduled · '+(h.scheduled_for?new Date(h.scheduled_for).toLocaleString():'Pending')),el('p','Keys/access credentials · '+(h.keys_count??0)),el('p','Provider acknowledgement · '+(h.provider_acknowledged_at?'Recorded':'Pending')));

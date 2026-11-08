@@ -82,3 +82,19 @@ test('completion requires current transaction, refreshed readiness and explicit 
  const pending=moveFixture({ready:false});await assert.rejects(pending.flow.completeMoveIn('transaction'),/pending/);assert.equal(pending.calls.some(([n])=>n==='complete_my_move_in'),false);
  await assert.rejects(moveFixture({confirmed:false}).flow.completeMoveIn('transaction'),/not confirmed/);
 });
+function evidenceFixture(){
+ const calls=[],window={};vm.runInNewContext(source,{window,URL});
+ const record={id:'condition',notes:'Wall crack',status:'submitted',submitted_at:'today',media_manifest:[{asset_id:'asset'}]};
+ const flow=window.LajemboRentalProgress.create({from:()=>({select:()=>({eq:()=>({eq:()=>({single:async()=>({data:record,error:null})})})})}),rpc:async(name,args)=>{calls.push([name,args]);return{data:name==='get_my_selection_progress'?shown:name==='get_my_transaction_workspace'?{transaction:{id:'transaction'},move_in_conditions:[{id:'condition',record_type:'pre_move_in',status:'submitted',media_count:1}]}:name==='get_my_transaction_evidence'?[{asset_id:'asset',mime_type:'image/jpeg'}]:name==='get_my_transaction_evidence_access'?{bucket:'transaction-evidence',storage_path:'transaction/asset'}:null,error:null};},storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'https://project.supabase.co/secure'},error:null})})}});
+ return{flow,record,calls};
+}
+test('condition evidence is tied to the current record and acknowledgement rechecks changed evidence',async()=>{
+ const f=evidenceFixture(),evidence=await f.flow.conditionEvidence('condition');assert.equal(evidence.assets[0].asset_id,'asset');
+ await assert.rejects(f.flow.evidenceLink('condition','foreign'),/does not belong/);
+ await f.flow.evidenceLink('condition','asset');
+ await assert.rejects(f.flow.respond('condition','condition','acknowledge'),/Review all/);
+ const reviewed={...evidence,opened:['asset']};await f.flow.respond('condition','condition','acknowledge','',reviewed);
+ assert.equal(f.calls.at(-1)[0],'respond_to_my_move_in_condition');
+ f.record.notes='New condition notes';await assert.rejects(f.flow.respond('condition','condition','acknowledge','',reviewed),/Review all/);
+ f.record.media_manifest=[{asset_id:'missing'}];await assert.rejects(f.flow.conditionEvidence('condition'),/unavailable/);
+});
