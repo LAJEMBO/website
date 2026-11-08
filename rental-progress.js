@@ -40,6 +40,39 @@
   body.append(el('h3','Tenancy agreement'),el('p',data.agreement?.document_status||'Agreement preparation is pending.'),
    el('p','Documents · '+data.document_count),el('p','Receipts · '+data.receipt_count),
    el('p','Handover · '+(data.handover?.handover_status||'Pending')));
+  const agreement=data.agreement;
+  const records=el('section');records.className='info-card';records.append(el('h3','Your documents and receipts'));body.append(records);
+  // Records failing to load must not hide the transaction or imply payment failed.
+  try{
+   const [documents,receipts]=await Promise.all([flow.documents(),flow.receipts()]);
+   let reviewed=false;
+   for(const document of documents){
+    button('Review '+document.document_type.replaceAll('_',' ')+' · '+document.document_version,async()=>{
+     const url=await flow.documentLink(document.document_id);
+     const link=el('a','Open secure document (available for five minutes)');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.className='info-button';
+     records.querySelectorAll('a').forEach(node=>node.remove());records.append(link);
+     if(/tenancy/i.test(document.document_type)&&/agreement/i.test(document.document_type)){link.onclick=()=>{reviewed=true;};}
+    },records);
+   }
+   if(!documents.length)records.append(el('p','No documents are available yet.'));
+   if(agreement?.renter_signed_at)records.append(el('p','Your agreement acceptance is recorded.'));
+   else if(agreement&&['issued','partially_signed'].includes(agreement.document_status)){
+    const label=el('label'),check=el('input');check.type='checkbox';label.append(check,document.createTextNode(' I have opened and read the tenancy agreement and agree to its terms.'));records.append(label);
+    button('Accept tenancy agreement',async()=>{
+     if(!reviewed||!check.checked)throw Error('Open the agreement and confirm that you have read and accepted its terms first.');
+     if(!window.confirm('Record your acceptance of this tenancy agreement?'))return;
+     await flow.acceptAgreement(data);await transaction();status.textContent='Your agreement acceptance is recorded.';
+    },records);
+   }
+   records.append(el('h3','Payment receipts'));
+   if(!receipts.length)records.append(el('p','No payment receipts have been issued for this transaction.'));
+   for(const receipt of receipts){
+    const row=el('section');row.className='info-card';
+    row.append(el('h4',receipt.receipt_number),el('p',receipt.receipt_purpose.replaceAll('_',' ')),
+     el('p',new Intl.NumberFormat('en-NG',{style:'currency',currency:receipt.currency_code}).format(receipt.amount)),
+     el('p','Issued '+new Date(receipt.issued_at).toLocaleString()));records.append(row);
+   }
+  }catch(error){records.append(el('p','Records could not be loaded. '+error.message));}
   button('Refresh transaction details',transaction);button('Back to selection',load);
  }
  auth.ready.then(()=>run(load)).catch(()=>{status.textContent='Unable to restore your session. Log in again.';});
