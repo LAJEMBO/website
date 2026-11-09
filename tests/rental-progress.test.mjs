@@ -15,14 +15,14 @@ function fixture(current=shown,error=null){
  }});
  return{flow,calls};
 }
-test('website accepts only the reviewed current selection and sends no client-controlled prices',async()=>{
+test('website accepts only the reviewed current selection and sends the reviewed amounts for server comparison',async()=>{
  const f=fixture();await f.flow.acceptCosts(shown);
- assert.equal(JSON.stringify(f.calls),JSON.stringify([['get_my_selection_progress',undefined],['accept_my_selection_costs',{p_selection_intent_id:'selection'}]]));
+ assert.equal(JSON.stringify(f.calls),JSON.stringify([['get_my_selection_progress',undefined],['accept_my_reviewed_selection_costs',{p_selection_intent_id:'selection',p_reviewed_costs:{annual_rent:2000000,platform_fee:100000,caution_deposit:200000,legal_documentation_fee:0,service_charge:0,other_approved_charges:0,total_move_in_cost:2300000}}]]));
 });
 test('changed selections and costs require another review before acceptance',async()=>{
  for(const current of [null,{...shown,selection_intent_id:'different'},{...shown,costs:null},{...shown,costs:{...shown.costs,platform_fee:200000}}]){
   const f=fixture(current);await assert.rejects(f.flow.acceptCosts(shown),/changed/);
-  assert.equal(f.calls.some(([name])=>name==='accept_my_selection_costs'),false);
+  assert.equal(f.calls.some(([name])=>name==='accept_my_reviewed_selection_costs'),false);
  }
 });
 test('already accepted costs skip duplicate writes and server rejection remains visible',async()=>{

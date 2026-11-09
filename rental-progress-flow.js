@@ -11,7 +11,7 @@
     costFields.some(field=>current.costs[field]!==shown.costs[field]))throw Error('Your selection or costs changed. Refresh and review the current amounts.');
    if(current.costs.confirmed_by_renter)return;
    if(!current.costs.confirmed_by_provider)throw Error('Provider confirmation is pending.');
-   await rpc('accept_my_selection_costs',{p_selection_intent_id:current.selection_intent_id});
+   await rpc('accept_my_reviewed_selection_costs',{p_selection_intent_id:current.selection_intent_id,p_reviewed_costs:Object.fromEntries(costFields.map(field=>[field,shown.costs[field]]))});
   }
   async function workspace(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_transaction_workspace',{p_transaction_id:current.transaction_id});}
   async function documents(){const current=await selection();if(!current?.transaction_id)return[];return (await rpc('get_my_transaction_documents',{p_transaction_id:current.transaction_id}))||[];}
