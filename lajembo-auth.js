@@ -66,6 +66,7 @@
   const allowedReturns=new Set(['registration.html','provider-registration.html','exclusive-provider-application.html','provider-workspace.html']);
   async function destination() {
     await ready;
+    if(new URLSearchParams(location.search).get('return')==='property-management.html')return 'property-management.html#management-application';
     const {data,error}=await client.rpc('get_my_onboarding_experience');if(error)throw Error('Unable to load your account. Please retry.');
     const requested=new URLSearchParams(location.search).get('return');
     const renter=data?.account_type==='home_seeker',provider=data?.account_type==='provider';
