@@ -184,3 +184,24 @@ test('maintenance is scoped to the opened active tenancy and only resolved reque
  assert.equal(calls.at(-1)[1].p_note,'Still leaking');
  await assert.rejects(window.LajemboRentalProgress.create(client).maintenance(),/active tenancy/);
 });
+
+test('renewal responses require the current unflagged offer and an open decision window',async()=>{
+ const window={},calls=[];vm.runInNewContext(source,{window});
+ const shown={renewal_offer_id:'offer',offer_status:'offered',total_renewal_cost:2000000};
+ let current={...shown},decision={window_open:false};
+ const flow=window.LajemboRentalProgress.create({rpc:async(name,args)=>{
+  calls.push([name,args]);
+  return{data:name==='get_my_renewal_protection'?current:name==='get_my_tenancy_end_decision'?decision:null};
+ }},{transactionId:'active'});
+ current.total_renewal_cost=2100000;
+ await assert.rejects(flow.respondToRenewal(shown,'accept'),/changed/);
+ current={...shown,next_action:'review_flagged_repeat_or_unapproved_charges'};
+ await assert.rejects(flow.respondToRenewal(shown,'accept'),/require review/);
+ await assert.rejects(flow.recordTenancyDecision('renew'),/no longer available/);
+ assert.equal(calls.some(([name])=>['respond_to_my_renewal_offer','record_my_tenancy_end_decision'].includes(name)),false);
+ current={...shown};decision={window_open:true};
+ await flow.recordTenancyDecision('exit');
+ assert.equal(calls.at(-1)[1].p_transaction_id,'active');
+ await flow.respondToRenewal(shown,'accept');
+ assert.equal(calls.at(-1)[1].p_offer_id,'offer');
+});

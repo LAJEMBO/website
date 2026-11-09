@@ -126,6 +126,50 @@
    body.append(row);
   }
  }
+ async function renewal(flow,back){
+  body.replaceChildren(el('h2','Renewal protection'));
+  button('Back to active tenancy',back);
+  status.textContent='Loading renewal details…';
+  const {offer,decision,agreement}=await flow.renewal();
+  status.textContent='';
+  const choiceCard=el('section');choiceCard.className='info-card';
+  choiceCard.append(el('h3','Renewal or exit decision'),
+   el('p','Current tenancy ends · '+(decision?.tenancy_end_date||offer.tenancy_end_date||'Pending')),
+   el('p','Decision window opens · '+(decision?.window_opens_on||'Pending')));
+  if(decision?.decision)choiceCard.append(el('p','Recorded decision · '+(decision.decision==='renew'?'Renew':'Exit at tenancy end')));
+  else if(decision?.window_open){
+   for(const [choice,label] of [['renew','I want to renew'],['exit','I will exit at tenancy end']]){
+    button(label,async()=>{
+     if(!window.confirm('Record this decision? Changes require staff review. Your current tenancy continues through its end date.'))return;
+     await flow.recordTenancyDecision(choice);await renewal(flow,back);status.textContent='Your tenancy decision was recorded.';
+    },choiceCard);
+   }
+  }else choiceCard.append(el('p','The decision window is closed.'));
+  body.append(choiceCard);
+  const card=el('section');card.className='info-card';card.append(el('h3','Renewal offer'));body.append(card);
+  button('Refresh renewal details',()=>renewal(flow,back));
+  if(!offer.renewal_offer_id){card.append(el('p','No current renewal offer.'));return;}
+  card.append(el('p','Status · '+offer.offer_status));
+  for(const [label,key] of [['Annual rent','proposed_annual_rent'],['Service charge','service_charge'],['Renewal platform fee','renewal_platform_fee'],['Caution deposit','caution_deposit'],['Agent fee','agent_fee'],['Legal fee','legal_fee'],['Other approved charges','other_approved_charges'],['Total renewal cost','total_renewal_cost']]){
+   card.append(el('p',label+' · '+(offer[key]==null?'Pending':money(offer[key]))));
+  }
+  if(offer.next_action==='review_flagged_repeat_or_unapproved_charges'){
+   card.append(el('p','This offer contains charges that require review before it can proceed.'));
+  }else if(offer.offer_status==='offered'){
+   for(const [action,label] of [['accept','Accept renewal offer'],['decline','Decline renewal offer']]){
+    button(label,async()=>{
+     if(!window.confirm(label+'?'))return;
+     await flow.respondToRenewal(offer,action);await renewal(flow,back);
+     status.textContent=action==='accept'?'Renewal offer accepted.':'Renewal offer declined.';
+    },card);
+   }
+  }
+  if(agreement){
+   card.append(el('h3','Renewal agreement'),el('p','Status · '+agreement.document_status.replaceAll('_',' ')),
+    el('p','Renter signature · '+(agreement.renter_signed_at?'Recorded':'Pending')),
+    el('p','Provider signature · '+(agreement.provider_signed_at?'Recorded':'Pending')));
+  }else if(offer.offer_status==='accepted')card.append(el('p','Waiting for the provider to issue the renewal agreement.'));
+ }
  async function transaction(activeId){
   const flow=activeId?window.LajemboRentalProgress.create(auth.client,{transactionId:activeId}):selectionFlow;
   const refreshTransaction=()=>transaction(activeId);
@@ -136,6 +180,7 @@
   if(activeId){
    body.prepend(el('h2','Active tenancy'));
    button('Open maintenance',()=>maintenance(flow,refreshTransaction));
+   button('Open renewal protection',()=>renewal(flow,refreshTransaction));
   }
   costs(data.transaction,'success_fee');
   body.append(el('h3','Tenancy agreement'),el('p',data.agreement?.document_status||'Agreement preparation is pending.'),

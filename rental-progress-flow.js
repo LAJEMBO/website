@@ -123,6 +123,36 @@
    }
    await rpc('respond_to_my_maintenance_resolution',{p_request_id:id,p_action:action,p_note:note.trim()||null});
   }
+  async function renewal(){
+   if(!transactionId)throw Error('Open your active tenancy before reviewing renewal.');
+   const args={p_transaction_id:transactionId};
+   const [offer,decision]=await Promise.all([
+    rpc('get_my_renewal_protection',args),rpc('get_my_tenancy_end_decision',args)
+   ]);
+   if(!offer)throw Error('Renewal details are unavailable.');
+   const agreement=offer.renewal_offer_id&&offer.offer_status==='accepted'
+    ?await rpc('get_my_renewal_agreement',{p_offer_id:offer.renewal_offer_id}):null;
+   return{offer,decision,agreement};
+  }
+  async function recordTenancyDecision(choice){
+   if(!['renew','exit'].includes(choice))throw Error('Choose renew or exit.');
+   const {decision}=await renewal();
+   if(!decision?.window_open||decision.decision)throw Error('The tenancy decision is no longer available.');
+   await rpc('record_my_tenancy_end_decision',{p_transaction_id:transactionId,p_decision:choice});
+  }
+  async function respondToRenewal(shown,action){
+   if(!['accept','decline'].includes(action))throw Error('Choose accept or decline.');
+   const {offer}=await renewal();
+   const amountFields=['proposed_annual_rent','service_charge','renewal_platform_fee','caution_deposit','agent_fee','legal_fee','other_approved_charges','total_renewal_cost'];
+   if(!offer.renewal_offer_id||offer.renewal_offer_id!==shown.renewal_offer_id||
+    offer.offer_status!=='offered'||amountFields.some(key=>offer[key]!==shown[key])){
+    throw Error('The renewal offer changed. Refresh and review it again.');
+   }
+   if(offer.next_action==='review_flagged_repeat_or_unapproved_charges'){
+    throw Error('This renewal offer contains charges that require review.');
+   }
+   await rpc('respond_to_my_renewal_offer',{p_offer_id:offer.renewal_offer_id,p_action:action});
+  }
   async function protection(){const current=await transactionSelection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});}
   async function submitConditionCheck(shownId,notes,manifest=[]){
    if(!notes?.trim())throw Error('Enter your condition notes before submitting.');
@@ -152,7 +182,7 @@
    const result=await rpc('complete_my_move_in',{p_transaction_id:current.transaction_id});
    if(result?.status!=='completed')throw Error(result?.message||'Move-in completion was not confirmed.');return result;
   }
-  return{selection,activeTenancy,maintenance,uploadMaintenancePhoto,submitMaintenance,respondToMaintenance,rentalHistory,rentalHistoryRecord,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
+  return{selection,activeTenancy,renewal,recordTenancyDecision,respondToRenewal,maintenance,uploadMaintenancePhoto,submitMaintenance,respondToMaintenance,rentalHistory,rentalHistoryRecord,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
  }
  window.LajemboRentalProgress={create};
 })();
