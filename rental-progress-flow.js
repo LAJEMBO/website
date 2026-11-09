@@ -13,6 +13,16 @@
    if(!current.costs.confirmed_by_provider)throw Error('Provider confirmation is pending.');
    await rpc('accept_my_reviewed_selection_costs',{p_selection_intent_id:current.selection_intent_id,p_reviewed_costs:Object.fromEntries(costFields.map(field=>[field,shown.costs[field]]))});
   }
+  async function rentalHistory(){return (await rpc('get_my_rental_history'))||[];}
+  async function rentalHistoryRecord(transactionId){
+   const args={p_transaction_id:transactionId};
+   const record=await rpc('get_my_rental_history_detail',args);
+   if(record?.viewer_role!=='renter'||record.transaction_id!==transactionId){
+    throw Error('This rental record is unavailable.');
+   }
+   const receipts=(await rpc('get_my_payment_receipts',args))||[];
+   return {record,receipts};
+  }
   async function activeTenancy(){return rpc('get_my_active_tenancy_dashboard');}
   async function transactionSelection(){
    return transactionId?{transaction_id:transactionId}:selection();
@@ -105,7 +115,7 @@
    const result=await rpc('complete_my_move_in',{p_transaction_id:current.transaction_id});
    if(result?.status!=='completed')throw Error(result?.message||'Move-in completion was not confirmed.');return result;
   }
-  return{selection,activeTenancy,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
+  return{selection,activeTenancy,rentalHistory,rentalHistoryRecord,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
  }
  window.LajemboRentalProgress={create};
 })();

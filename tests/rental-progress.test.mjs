@@ -150,3 +150,18 @@ test('active tenancy records stay scoped to the server-selected tenancy when the
   ['get_my_payment_receipts','active'],['get_my_move_in_protection_status','active'],
  ]);
 });
+
+test('rental history requests receipts only after validating the renter record',async()=>{
+ const window={},calls=[];vm.runInNewContext(source,{window});
+ let viewer='renter';
+ const client={rpc:async(name,args)=>{
+  calls.push([name,args]);
+  return{data:name==='get_my_rental_history_detail'?{viewer_role:viewer,transaction_id:'closed'}:[]};
+ }};
+ const flow=window.LajemboRentalProgress.create(client);
+ await flow.rentalHistory();await flow.rentalHistoryRecord('closed');
+ assert.equal(calls.at(-1)[0],'get_my_payment_receipts');
+ assert.equal(calls.at(-1)[1].p_transaction_id,'closed');
+ viewer='provider';await assert.rejects(flow.rentalHistoryRecord('closed'),/unavailable/);
+ assert.equal(calls.at(-1)[0],'get_my_rental_history_detail');
+});

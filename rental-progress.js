@@ -16,9 +16,50 @@
   }
   body.append(card);return card;
  }
+ function showReceipts(parent,receipts){
+   parent.append(el('h3','Payment receipts'));
+   if(!receipts.length)parent.append(el('p','No payment receipts have been issued for this transaction.'));
+   for(const receipt of receipts){
+    const row=el('section');row.className='info-card';
+    row.append(el('h4',receipt.receipt_number),el('p',receipt.receipt_purpose.replaceAll('_',' ')),
+     el('p',new Intl.NumberFormat('en-NG',{style:'currency',currency:receipt.currency_code}).format(receipt.amount)),
+     el('p','Issued '+new Date(receipt.issued_at).toLocaleString()));parent.append(row);
+   }
+ }
+ async function history(){
+  body.replaceChildren(el('h2','Rental history'));
+  button('Back to rental progress',load);
+  status.textContent='Loading rental history…';
+  const records=await selectionFlow.rentalHistory();
+  status.textContent='';
+  if(!records.length)body.append(el('p','No rental history is available yet.'));
+  for(const record of records){
+   const card=el('section');card.className='info-card';
+   card.append(el('h3',record.public_property_code),el('p',[record.area,record.city].filter(Boolean).join(' · ')),
+    el('p',record.status==='closed'?'Closed tenancy':'Completed rental'),
+    el('p','Annual rent · '+money(record.annual_rent)));
+   button('Open rental record',()=>historyRecord(record.transaction_id),card);
+   body.append(card);
+  }
+ }
+ async function historyRecord(transactionId){
+  body.replaceChildren(el('h2','Rental record'));
+  button('Back to rental history',history);
+  status.textContent='Loading rental record…';
+  const {record,receipts}=await selectionFlow.rentalHistoryRecord(transactionId);
+  status.textContent='';
+  const card=el('section');card.className='info-card';
+  for(const [label,key] of [['Annual rent','annual_rent'],['LAJEMBO success fee','success_fee'],['Caution deposit','caution_deposit'],['Total move-in cost','total_move_in_cost']]){
+   card.append(el('p',label+' · '+money(record[key])));
+  }
+  if(record.closed_at)card.append(el('p','Closed · '+new Date(record.closed_at).toLocaleDateString()));
+  showReceipts(card,receipts);
+  body.append(card);
+ }
  async function load(){
   status.textContent='Loading your property selection…';body.replaceChildren();
   button('Open active tenancy',openActiveTenancy);
+  button('Rental history',history);
   const data=await selectionFlow.selection();status.textContent='';
   if(!data){body.append(el('p','No property selection is ready yet. Record your decision after completing a viewing.'));button('Refresh selection',load);return;}
   body.append(el('h2',data.public_property_code),el('p',[data.area,data.city,data.property_type].filter(Boolean).join(' · ')),
@@ -74,14 +115,7 @@
      await flow.acceptAgreement(data);await refreshTransaction();status.textContent='Your agreement acceptance is recorded.';
     },records);
    }
-   records.append(el('h3','Payment receipts'));
-   if(!receipts.length)records.append(el('p','No payment receipts have been issued for this transaction.'));
-   for(const receipt of receipts){
-    const row=el('section');row.className='info-card';
-    row.append(el('h4',receipt.receipt_number),el('p',receipt.receipt_purpose.replaceAll('_',' ')),
-     el('p',new Intl.NumberFormat('en-NG',{style:'currency',currency:receipt.currency_code}).format(receipt.amount)),
-     el('p','Issued '+new Date(receipt.issued_at).toLocaleString()));records.append(row);
-   }
+   showReceipts(records,receipts);
   }catch(error){records.append(el('p','Records could not be loaded. '+error.message));}
   const move=el('section');move.className='info-card';move.append(el('h3','Move-in and possession'));body.append(move);
   function responseForm(kind,record,reviewed=null){
