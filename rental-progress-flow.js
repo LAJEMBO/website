@@ -1,7 +1,7 @@
 (() => {
  'use strict';
  const costFields=['annual_rent','platform_fee','caution_deposit','legal_documentation_fee','service_charge','other_approved_charges','total_move_in_cost'];
- function create(client){
+ function create(client,{transactionId}={}){
   async function rpc(name,args){const result=await client.rpc(name,args);if(result.error)throw Error(result.error.message);return result.data;}
   async function selection(){return rpc('get_my_selection_progress');}
   async function acceptCosts(shown){
@@ -13,9 +13,23 @@
    if(!current.costs.confirmed_by_provider)throw Error('Provider confirmation is pending.');
    await rpc('accept_my_reviewed_selection_costs',{p_selection_intent_id:current.selection_intent_id,p_reviewed_costs:Object.fromEntries(costFields.map(field=>[field,shown.costs[field]]))});
   }
-  async function workspace(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_transaction_workspace',{p_transaction_id:current.transaction_id});}
-  async function documents(){const current=await selection();if(!current?.transaction_id)return[];return (await rpc('get_my_transaction_documents',{p_transaction_id:current.transaction_id}))||[];}
-  async function receipts(){const current=await selection();if(!current?.transaction_id)return[];return (await rpc('get_my_payment_receipts',{p_transaction_id:current.transaction_id}))||[];}
+  async function rentalHistory(){return (await rpc('get_my_rental_history'))||[];}
+  async function rentalHistoryRecord(transactionId){
+   const args={p_transaction_id:transactionId};
+   const record=await rpc('get_my_rental_history_detail',args);
+   if(record?.viewer_role!=='renter'||record.transaction_id!==transactionId){
+    throw Error('This rental record is unavailable.');
+   }
+   const receipts=(await rpc('get_my_payment_receipts',args))||[];
+   return {record,receipts};
+  }
+  async function activeTenancy(){return rpc('get_my_active_tenancy_dashboard');}
+  async function transactionSelection(){
+   return transactionId?{transaction_id:transactionId}:selection();
+  }
+  async function workspace(){const current=await transactionSelection();if(!current?.transaction_id)return null;return rpc('get_my_transaction_workspace',{p_transaction_id:current.transaction_id});}
+  async function documents(){const current=await transactionSelection();if(!current?.transaction_id)return[];return (await rpc('get_my_transaction_documents',{p_transaction_id:current.transaction_id}))||[];}
+  async function receipts(){const current=await transactionSelection();if(!current?.transaction_id)return[];return (await rpc('get_my_payment_receipts',{p_transaction_id:current.transaction_id}))||[];}
   async function documentLink(documentId){
    const available=await documents();if(!available.some(d=>d.document_id===documentId))throw Error('This document is no longer available in your current transaction.');
    const access=await rpc('get_my_transaction_document_access',{p_document_id:documentId});
@@ -61,28 +75,124 @@
   async function uploadConditionEvidence(shownId,file){
    const types={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','video/mp4':'mp4','video/webm':'webm','video/quicktime':'mov'};
    if(!file||!types[file.type]||!file.size||file.size>26214400)throw Error('Choose a JPEG, PNG, WebP, MP4, WebM or MOV file no larger than 25 MB.');
-   const current=await selection();if(current?.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before uploading.');
+   const current=await transactionSelection();if(current?.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before uploading.');
    const status=await rpc('get_my_move_in_protection_status',{p_transaction_id:shownId});if(status?.window_open!==true)throw Error('The reporting window is not open.');
+   return registerEvidence(shownId,file,types[file.type],'one_week_condition');
+  }
+  async function registerEvidence(shownId,file,extension,evidenceType){
    const user=await client.auth.getUser();if(user.error||!user.data?.user?.id)throw Error('Sign in again before uploading evidence.');
-   const path=shownId+'/'+user.data.user.id+'/one_week_condition-'+window.crypto.randomUUID()+'.'+types[file.type];
+   const path=shownId+'/'+user.data.user.id+'/'+evidenceType+'-'+window.crypto.randomUUID()+'.'+extension;
    const uploaded=await client.storage.from('transaction-evidence').upload(path,file,{contentType:file.type,upsert:false});
    if(uploaded.error)throw Error(uploaded.error.message);
    try{
-    const asset=await rpc('register_my_transaction_evidence',{p_transaction_id:shownId,p_evidence_type:'one_week_condition',p_storage_path:path});
+    const asset=await rpc('register_my_transaction_evidence',{p_transaction_id:shownId,p_evidence_type:evidenceType,p_storage_path:path});
     if(!asset?.asset_id)throw Error('Evidence registration was not confirmed.');return{asset_id:asset.asset_id};
    }catch(error){await client.storage.from('transaction-evidence').remove([path]);throw error;}
   }
-  async function protection(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});}
+  async function maintenance(){
+   if(!transactionId)throw Error('Open your active tenancy before managing maintenance.');
+   const tenancy=await rpc('get_my_active_tenancy',{p_transaction_id:transactionId});
+   if(!tenancy)throw Error('Your active tenancy is unavailable.');
+   return tenancy.open_maintenance||[];
+  }
+  async function uploadMaintenancePhoto(file){
+   const types={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'};
+   if(!file||!Object.hasOwn(types,file.type)||!file.size||file.size>26214400){
+    throw Error('Choose a JPEG, PNG or WebP photo up to 25 MB.');
+   }
+   await maintenance();
+   return registerEvidence(transactionId,file,types[file.type],'maintenance');
+  }
+  async function submitMaintenance({category,summary,description,urgency,attachments}){
+   if(!category.trim()||summary.trim().length<3)throw Error('Enter a category and a short summary.');
+   if(!['low','normal','high','urgent'].includes(urgency))throw Error('Choose a valid urgency.');
+   await maintenance();
+   const id=await rpc('submit_my_maintenance_request',{
+    p_transaction_id:transactionId,p_category:category.trim(),p_summary:summary.trim(),
+    p_description:description.trim()||null,p_urgency:urgency,
+    p_media_manifest:attachments.map(asset=>({asset_id:asset.asset_id}))
+   });
+   if(!id)throw Error('Maintenance submission was not confirmed.');
+  }
+  async function respondToMaintenance(id,action,note=''){
+   if(!['accept','reopen'].includes(action))throw Error('Choose a valid response.');
+   if(action==='reopen'&&!note.trim())throw Error('Enter a reason to reopen the request.');
+   const requests=await maintenance();
+   if(!requests.some(item=>item.request_id===id&&item.status==='resolved')){
+    throw Error('This request is no longer awaiting your response.');
+   }
+   await rpc('respond_to_my_maintenance_resolution',{p_request_id:id,p_action:action,p_note:note.trim()||null});
+  }
+  async function renewal(){
+   if(!transactionId)throw Error('Open your active tenancy before reviewing renewal.');
+   const args={p_transaction_id:transactionId};
+   const [offer,decision]=await Promise.all([
+    rpc('get_my_renewal_protection',args),rpc('get_my_tenancy_end_decision',args)
+   ]);
+   if(!offer)throw Error('Renewal details are unavailable.');
+   let agreement=null;
+   if(offer.renewal_offer_id&&offer.offer_status==='accepted'){
+    const result=await client.from('tenancy_agreements')
+     .select('id,renewal_offer_id,template_version,document_status,document_hash,storage_path,renter_signed_at,provider_signed_at')
+     .eq('transaction_id',transactionId).eq('agreement_kind','renewal').eq('renewal_offer_id',offer.renewal_offer_id).maybeSingle();
+    if(result.error)throw Error(result.error.message);
+    agreement=result.data?{...result.data,reviewable:!!(result.data.storage_path&&result.data.document_hash)}
+     :await rpc('get_my_renewal_agreement',{p_offer_id:offer.renewal_offer_id});
+   }
+   return{offer,decision,agreement};
+  }
+  function sameRenewalDocument(current,shown){
+   return current?.reviewable&&current.id===shown.id&&current.renewal_offer_id===shown.renewal_offer_id&&
+    current.template_version===shown.template_version&&current.document_hash===shown.document_hash&&
+    current.storage_path===shown.storage_path;
+  }
+  async function renewalDocumentLink(shown){
+   const {agreement}=await renewal();
+   if(!sameRenewalDocument(agreement,shown))throw Error('The renewal agreement changed or is unavailable.');
+   const result=await client.storage.from('transaction-documents').createSignedUrl(agreement.storage_path,300);
+   if(result.error||!result.data?.signedUrl)throw Error(result.error?.message||'The renewal document is unavailable.');
+   const url=new URL(result.data.signedUrl);
+   if(url.protocol!=='https:'&&!(url.protocol==='http:'&&url.hostname==='127.0.0.1'))throw Error('Invalid document link.');
+   return url.href;
+  }
+  async function signReviewedRenewal(shown){
+   const {agreement}=await renewal();
+   if(!sameRenewalDocument(agreement,shown)||agreement.renter_signed_at||
+    !['issued','partially_signed'].includes(agreement.document_status)){
+    throw Error('The renewal agreement changed or is unavailable for signing. Refresh and review it again.');
+   }
+   await rpc('accept_my_tenancy_agreement',{p_agreement_id:agreement.id,p_statement_version:'renewal-acceptance-v1'});
+  }
+  async function recordTenancyDecision(choice){
+   if(!['renew','exit'].includes(choice))throw Error('Choose renew or exit.');
+   const {decision}=await renewal();
+   if(!decision?.window_open||decision.decision)throw Error('The tenancy decision is no longer available.');
+   await rpc('record_my_tenancy_end_decision',{p_transaction_id:transactionId,p_decision:choice});
+  }
+  async function respondToRenewal(shown,action){
+   if(!['accept','decline'].includes(action))throw Error('Choose accept or decline.');
+   const {offer}=await renewal();
+   const amountFields=['proposed_annual_rent','service_charge','renewal_platform_fee','caution_deposit','agent_fee','legal_fee','other_approved_charges','total_renewal_cost'];
+   if(!offer.renewal_offer_id||offer.renewal_offer_id!==shown.renewal_offer_id||
+    offer.offer_status!=='offered'||amountFields.some(key=>offer[key]!==shown[key])){
+    throw Error('The renewal offer changed. Refresh and review it again.');
+   }
+   if(offer.next_action==='review_flagged_repeat_or_unapproved_charges'){
+    throw Error('This renewal offer contains charges that require review.');
+   }
+   await rpc('respond_to_my_renewal_offer',{p_offer_id:offer.renewal_offer_id,p_action:action});
+  }
+  async function protection(){const current=await transactionSelection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});}
   async function submitConditionCheck(shownId,notes,manifest=[]){
    if(!notes?.trim())throw Error('Enter your condition notes before submitting.');
-   const current=await selection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before submitting.');
+   const current=await transactionSelection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before submitting.');
    const status=await rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});
    if(status?.window_open!==true)throw Error('The seven-day condition reporting window is not open.');
    const result=await rpc('submit_my_seven_day_condition_check',{p_transaction_id:current.transaction_id,p_notes:notes.trim(),p_media_manifest:manifest});
    if(result?.status!=='submitted'||!result.condition_record_id)throw Error('Condition checklist submission was not confirmed.');
    return result;
   }
-  async function readiness(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_readiness',{p_transaction_id:current.transaction_id});}
+  async function readiness(){const current=await transactionSelection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_readiness',{p_transaction_id:current.transaction_id});}
   async function respond(kind,id,action,note='',reviewed=null){
    if(!['condition','handover'].includes(kind)||!['acknowledge','dispute'].includes(action))throw Error('Invalid move-in response.');
    if(action==='dispute'&&!note.trim())throw Error('Please provide a reason for the dispute.');
@@ -95,13 +205,13 @@
    });
   }
   async function completeMoveIn(shownId){
-   const current=await selection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh it before continuing.');
+   const current=await transactionSelection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh it before continuing.');
    const ready=await rpc('get_my_move_in_readiness',{p_transaction_id:current.transaction_id});
    if(!ready?.ready_for_clean_completion)throw Error('Required move-in checks are still pending.');
    const result=await rpc('complete_my_move_in',{p_transaction_id:current.transaction_id});
    if(result?.status!=='completed')throw Error(result?.message||'Move-in completion was not confirmed.');return result;
   }
-  return{selection,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
+  return{selection,activeTenancy,renewal,renewalDocumentLink,signReviewedRenewal,recordTenancyDecision,respondToRenewal,maintenance,uploadMaintenancePhoto,submitMaintenance,respondToMaintenance,rentalHistory,rentalHistoryRecord,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
  }
  window.LajemboRentalProgress={create};
 })();

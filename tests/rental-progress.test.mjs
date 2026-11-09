@@ -133,3 +133,99 @@ test('saved seven-day attachments use their own evidence category and reject uns
  const f=evidenceFixture();f.record.record_type='renter_one_week_checklist';await f.flow.conditionEvidence('condition');const list=f.calls.find(([n])=>n==='get_my_transaction_evidence');assert.equal(list[1].p_evidence_type,'one_week_condition');await f.flow.evidenceLink('condition','asset');
  f.record.record_type='unknown';await assert.rejects(f.flow.conditionEvidence('condition'),/not part|Unsupported/);
 });
+
+test('active tenancy records stay scoped to the server-selected tenancy when the latest selection changes',async()=>{
+ const window={},calls=[];vm.runInNewContext(source,{window});
+ const client={rpc:async(name,args)=>{
+  calls.push([name,args]);
+  if(name==='get_my_active_tenancy_dashboard')return{data:{transaction:{id:'active'}}};
+  if(name==='get_my_selection_progress')return{data:{transaction_id:'new-selection'}};
+  return{data:null};
+ }};
+ const active=await window.LajemboRentalProgress.create(client).activeTenancy();
+ const flow=window.LajemboRentalProgress.create(client,{transactionId:active.transaction.id});
+ await flow.workspace();await flow.documents();await flow.receipts();await flow.protection();
+ assert.deepEqual(calls.slice(1).map(([name,args])=>[name,args.p_transaction_id]),[
+  ['get_my_transaction_workspace','active'],['get_my_transaction_documents','active'],
+  ['get_my_payment_receipts','active'],['get_my_move_in_protection_status','active'],
+ ]);
+});
+
+test('rental history requests receipts only after validating the renter record',async()=>{
+ const window={},calls=[];vm.runInNewContext(source,{window});
+ let viewer='renter';
+ const client={rpc:async(name,args)=>{
+  calls.push([name,args]);
+  return{data:name==='get_my_rental_history_detail'?{viewer_role:viewer,transaction_id:'closed'}:[]};
+ }};
+ const flow=window.LajemboRentalProgress.create(client);
+ await flow.rentalHistory();await flow.rentalHistoryRecord('closed');
+ assert.equal(calls.at(-1)[0],'get_my_payment_receipts');
+ assert.equal(calls.at(-1)[1].p_transaction_id,'closed');
+ viewer='provider';await assert.rejects(flow.rentalHistoryRecord('closed'),/unavailable/);
+ assert.equal(calls.at(-1)[0],'get_my_rental_history_detail');
+});
+
+test('maintenance is scoped to the opened active tenancy and only resolved requests can receive responses',async()=>{
+ const window={},calls=[];vm.runInNewContext(source,{window});
+ const client={rpc:async(name,args)=>{
+  calls.push([name,args]);
+  if(name==='get_my_active_tenancy')return{data:{open_maintenance:[{request_id:'resolved',status:'resolved'}]}};
+  return{data:'saved'};
+ }};
+ const flow=window.LajemboRentalProgress.create(client,{transactionId:'active'});
+ await flow.submitMaintenance({category:'plumbing',summary:'Leaking tap',description:'',urgency:'normal',attachments:[{asset_id:'photo',storage_path:'omit'}]});
+ assert.equal(calls.at(-1)[1].p_transaction_id,'active');
+ assert.equal(JSON.stringify(calls.at(-1)[1].p_media_manifest),'[{"asset_id":"photo"}]');
+ await assert.rejects(flow.respondToMaintenance('foreign','accept'),/no longer awaiting/);
+ assert.equal(calls.at(-1)[0],'get_my_active_tenancy');
+ await assert.rejects(flow.respondToMaintenance('resolved','reopen'),/reason/);
+ await flow.respondToMaintenance('resolved','reopen','Still leaking');
+ assert.equal(calls.at(-1)[1].p_note,'Still leaking');
+ await assert.rejects(window.LajemboRentalProgress.create(client).maintenance(),/active tenancy/);
+});
+
+test('renewal responses require the current unflagged offer and an open decision window',async()=>{
+ const window={},calls=[];vm.runInNewContext(source,{window});
+ const shown={renewal_offer_id:'offer',offer_status:'offered',total_renewal_cost:2000000};
+ let current={...shown},decision={window_open:false};
+ const flow=window.LajemboRentalProgress.create({rpc:async(name,args)=>{
+  calls.push([name,args]);
+  return{data:name==='get_my_renewal_protection'?current:name==='get_my_tenancy_end_decision'?decision:null};
+ }},{transactionId:'active'});
+ current.total_renewal_cost=2100000;
+ await assert.rejects(flow.respondToRenewal(shown,'accept'),/changed/);
+ current={...shown,next_action:'review_flagged_repeat_or_unapproved_charges'};
+ await assert.rejects(flow.respondToRenewal(shown,'accept'),/require review/);
+ await assert.rejects(flow.recordTenancyDecision('renew'),/no longer available/);
+ assert.equal(calls.some(([name])=>['respond_to_my_renewal_offer','record_my_tenancy_end_decision'].includes(name)),false);
+ current={...shown};decision={window_open:true};
+ await flow.recordTenancyDecision('exit');
+ assert.equal(calls.at(-1)[1].p_transaction_id,'active');
+ await flow.respondToRenewal(shown,'accept');
+ assert.equal(calls.at(-1)[1].p_offer_id,'offer');
+});
+
+test('renewal review and signing are scoped to the issued document for the accepted offer',async()=>{
+ const window={},calls=[],filters=[];vm.runInNewContext(source,{window,URL});
+ let current={id:'agreement',renewal_offer_id:'offer',template_version:'v1',document_status:'issued',document_hash:'hash',storage_path:'transaction/renewal.pdf'};
+ const query={select:()=>query,eq:(key,value)=>{filters.push([key,value]);return query;},maybeSingle:async()=>({data:current})};
+ const client={from:()=>query,rpc:async(name,args)=>{
+  calls.push([name,args]);
+  return{data:name==='get_my_renewal_protection'?{renewal_offer_id:'offer',offer_status:'accepted'}:null};
+ },storage:{from:bucket=>({createSignedUrl:async(path,seconds)=>{
+  assert.equal(bucket,'transaction-documents');assert.equal(path,'transaction/renewal.pdf');assert.equal(seconds,300);
+  return{data:{signedUrl:'https://example.test/private'}};
+ }})}};
+ const flow=window.LajemboRentalProgress.create(client,{transactionId:'transaction'});
+ const {agreement}=await flow.renewal();
+ assert.deepEqual(filters,[['transaction_id','transaction'],['agreement_kind','renewal'],['renewal_offer_id','offer']]);
+ await flow.renewalDocumentLink(agreement);
+ current={...current,document_hash:'different'};
+ await assert.rejects(flow.signReviewedRenewal(agreement),/changed/);
+ assert.equal(calls.some(([name])=>name==='accept_my_tenancy_agreement'),false);
+ current={...current,document_hash:'hash'};
+ await flow.signReviewedRenewal(agreement);
+ assert.equal(calls.at(-1)[1].p_agreement_id,'agreement');
+ current=null;await assert.rejects(flow.renewalDocumentLink(agreement),/unavailable/);
+});
