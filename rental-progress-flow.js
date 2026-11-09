@@ -130,9 +130,38 @@
     rpc('get_my_renewal_protection',args),rpc('get_my_tenancy_end_decision',args)
    ]);
    if(!offer)throw Error('Renewal details are unavailable.');
-   const agreement=offer.renewal_offer_id&&offer.offer_status==='accepted'
-    ?await rpc('get_my_renewal_agreement',{p_offer_id:offer.renewal_offer_id}):null;
+   let agreement=null;
+   if(offer.renewal_offer_id&&offer.offer_status==='accepted'){
+    const result=await client.from('tenancy_agreements')
+     .select('id,renewal_offer_id,template_version,document_status,document_hash,storage_path,renter_signed_at,provider_signed_at')
+     .eq('transaction_id',transactionId).eq('agreement_kind','renewal').eq('renewal_offer_id',offer.renewal_offer_id).maybeSingle();
+    if(result.error)throw Error(result.error.message);
+    agreement=result.data?{...result.data,reviewable:!!(result.data.storage_path&&result.data.document_hash)}
+     :await rpc('get_my_renewal_agreement',{p_offer_id:offer.renewal_offer_id});
+   }
    return{offer,decision,agreement};
+  }
+  function sameRenewalDocument(current,shown){
+   return current?.reviewable&&current.id===shown.id&&current.renewal_offer_id===shown.renewal_offer_id&&
+    current.template_version===shown.template_version&&current.document_hash===shown.document_hash&&
+    current.storage_path===shown.storage_path;
+  }
+  async function renewalDocumentLink(shown){
+   const {agreement}=await renewal();
+   if(!sameRenewalDocument(agreement,shown))throw Error('The renewal agreement changed or is unavailable.');
+   const result=await client.storage.from('transaction-documents').createSignedUrl(agreement.storage_path,300);
+   if(result.error||!result.data?.signedUrl)throw Error(result.error?.message||'The renewal document is unavailable.');
+   const url=new URL(result.data.signedUrl);
+   if(url.protocol!=='https:'&&!(url.protocol==='http:'&&url.hostname==='127.0.0.1'))throw Error('Invalid document link.');
+   return url.href;
+  }
+  async function signReviewedRenewal(shown){
+   const {agreement}=await renewal();
+   if(!sameRenewalDocument(agreement,shown)||agreement.renter_signed_at||
+    !['issued','partially_signed'].includes(agreement.document_status)){
+    throw Error('The renewal agreement changed or is unavailable for signing. Refresh and review it again.');
+   }
+   await rpc('accept_my_tenancy_agreement',{p_agreement_id:agreement.id,p_statement_version:'renewal-acceptance-v1'});
   }
   async function recordTenancyDecision(choice){
    if(!['renew','exit'].includes(choice))throw Error('Choose renew or exit.');
@@ -182,7 +211,7 @@
    const result=await rpc('complete_my_move_in',{p_transaction_id:current.transaction_id});
    if(result?.status!=='completed')throw Error(result?.message||'Move-in completion was not confirmed.');return result;
   }
-  return{selection,activeTenancy,renewal,recordTenancyDecision,respondToRenewal,maintenance,uploadMaintenancePhoto,submitMaintenance,respondToMaintenance,rentalHistory,rentalHistoryRecord,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
+  return{selection,activeTenancy,renewal,renewalDocumentLink,signReviewedRenewal,recordTenancyDecision,respondToRenewal,maintenance,uploadMaintenancePhoto,submitMaintenance,respondToMaintenance,rentalHistory,rentalHistoryRecord,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
  }
  window.LajemboRentalProgress={create};
 })();

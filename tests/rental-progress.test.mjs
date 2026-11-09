@@ -205,3 +205,27 @@ test('renewal responses require the current unflagged offer and an open decision
  await flow.respondToRenewal(shown,'accept');
  assert.equal(calls.at(-1)[1].p_offer_id,'offer');
 });
+
+test('renewal review and signing are scoped to the issued document for the accepted offer',async()=>{
+ const window={},calls=[],filters=[];vm.runInNewContext(source,{window,URL});
+ let current={id:'agreement',renewal_offer_id:'offer',template_version:'v1',document_status:'issued',document_hash:'hash',storage_path:'transaction/renewal.pdf'};
+ const query={select:()=>query,eq:(key,value)=>{filters.push([key,value]);return query;},maybeSingle:async()=>({data:current})};
+ const client={from:()=>query,rpc:async(name,args)=>{
+  calls.push([name,args]);
+  return{data:name==='get_my_renewal_protection'?{renewal_offer_id:'offer',offer_status:'accepted'}:null};
+ },storage:{from:bucket=>({createSignedUrl:async(path,seconds)=>{
+  assert.equal(bucket,'transaction-documents');assert.equal(path,'transaction/renewal.pdf');assert.equal(seconds,300);
+  return{data:{signedUrl:'https://example.test/private'}};
+ }})}};
+ const flow=window.LajemboRentalProgress.create(client,{transactionId:'transaction'});
+ const {agreement}=await flow.renewal();
+ assert.deepEqual(filters,[['transaction_id','transaction'],['agreement_kind','renewal'],['renewal_offer_id','offer']]);
+ await flow.renewalDocumentLink(agreement);
+ current={...current,document_hash:'different'};
+ await assert.rejects(flow.signReviewedRenewal(agreement),/changed/);
+ assert.equal(calls.some(([name])=>name==='accept_my_tenancy_agreement'),false);
+ current={...current,document_hash:'hash'};
+ await flow.signReviewedRenewal(agreement);
+ assert.equal(calls.at(-1)[1].p_agreement_id,'agreement');
+ current=null;await assert.rejects(flow.renewalDocumentLink(agreement),/unavailable/);
+});

@@ -168,6 +168,28 @@
    card.append(el('h3','Renewal agreement'),el('p','Status · '+agreement.document_status.replaceAll('_',' ')),
     el('p','Renter signature · '+(agreement.renter_signed_at?'Recorded':'Pending')),
     el('p','Provider signature · '+(agreement.provider_signed_at?'Recorded':'Pending')));
+   if(agreement.reviewable){
+    let opened=false;
+    const linkArea=el('div');card.append(linkArea);
+    button('Review renewal agreement',async()=>{
+     const url=await flow.renewalDocumentLink(agreement);
+     const link=el('a','Open private renewal agreement (five-minute link)');
+     link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.className='info-button';
+     link.onclick=()=>{opened=true;};linkArea.replaceChildren(link);
+    },card);
+    if(!agreement.renter_signed_at&&['issued','partially_signed'].includes(agreement.document_status)){
+     const label=el('label'),check=el('input');check.type='checkbox';
+     label.append(check,document.createTextNode(' I have read and agree to this renewal agreement.'));card.append(label);
+     button('Sign renewal agreement',async()=>{
+      if(!opened||!check.checked)throw Error('Open the renewal agreement and confirm your acceptance first.');
+      await flow.signReviewedRenewal(agreement);
+      await renewal(flow,back);status.textContent='Your renewal signature was recorded.';
+     },card);
+    }
+   }else if(!agreement.renter_signed_at){
+    card.append(el('p','The renewal document is not available for online review yet.'));
+   }
+
   }else if(offer.offer_status==='accepted')card.append(el('p','Waiting for the provider to issue the renewal agreement.'));
  }
  async function transaction(activeId){
@@ -202,7 +224,7 @@
    }
    if(!documents.length)records.append(el('p','No documents are available yet.'));
    if(agreement?.renter_signed_at)records.append(el('p','Your agreement acceptance is recorded.'));
-   else if(agreement&&['issued','partially_signed'].includes(agreement.document_status)){
+   else if(data.transaction.status!=='completed'&&agreement&&['issued','partially_signed'].includes(agreement.document_status)){
     const label=el('label'),check=el('input');check.type='checkbox';label.append(check,document.createTextNode(' I have opened and read the tenancy agreement and agree to its terms.'));records.append(label);
     button('Accept tenancy agreement',async()=>{
      if(!reviewed||!check.checked)throw Error('Open the agreement and confirm that you have read and accepted its terms first.');
