@@ -79,6 +79,53 @@
   if(!active?.transaction?.id){status.textContent='No active tenancy found.';return;}
   await transaction(active.transaction.id);
  }
+ async function maintenance(flow,back){
+  body.replaceChildren(el('h2','Maintenance'));
+  button('Back to active tenancy',back);
+  status.textContent='Loading maintenance requests…';
+  const requests=await flow.maintenance();
+  status.textContent='';
+  const card=el('section');card.className='info-card';card.append(el('h3','New request'));body.append(card);
+  function field(label,tag='input'){
+   const wrapper=el('label',label+' '),input=el(tag);
+   wrapper.append(input);card.append(wrapper);return input;
+  }
+  const category=field('Category');category.value='general';
+  const summary=field('Short summary'),description=field('Description (optional)','textarea');
+  const urgency=field('Urgency','select');
+  for(const level of ['low','normal','high','urgent']){
+   const option=el('option',level);option.value=level;urgency.append(option);
+  }
+  urgency.value='normal';
+  const photo=field('Private photo (optional)');photo.type='file';photo.accept='image/jpeg,image/png,image/webp';
+  const attachments=[],count=el('p');card.append(count);
+  button('Attach maintenance photo',async()=>{
+   attachments.push(await flow.uploadMaintenancePhoto(photo.files?.[0]));
+   photo.value='';count.textContent=attachments.length+' photos attached.';
+  },card);
+  button('Submit maintenance request',async()=>{
+   await flow.submitMaintenance({category:category.value,summary:summary.value,description:description.value,urgency:urgency.value,attachments});
+   await maintenance(flow,back);status.textContent='Maintenance request submitted.';
+  },card);
+  body.append(el('h3','Open requests'));
+  if(!requests.length)body.append(el('p','No open maintenance requests.'));
+  for(const request of requests){
+   const row=el('section');row.className='info-card';
+   row.append(el('h4',request.summary),el('p',[request.category,request.urgency,request.status].join(' · ')));
+   if(request.scheduled_for)row.append(el('p','Scheduled · '+new Date(request.scheduled_for).toLocaleString()));
+   if(request.resolution_note)row.append(el('p','Resolution · '+request.resolution_note));
+   if(request.status==='resolved'){
+    const label=el('label','Reason for reopening '),note=el('textarea');label.append(note);row.append(label);
+    async function respond(action){
+     await flow.respondToMaintenance(request.request_id,action,action==='reopen'?note.value:'');
+     await maintenance(flow,back);status.textContent=action==='accept'?'Resolution accepted.':'Request reopened.';
+    }
+    button('Accept resolution',()=>respond('accept'),row);
+    button('Reopen request',()=>respond('reopen'),row);
+   }
+   body.append(row);
+  }
+ }
  async function transaction(activeId){
   const flow=activeId?window.LajemboRentalProgress.create(auth.client,{transactionId:activeId}):selectionFlow;
   const refreshTransaction=()=>transaction(activeId);
@@ -86,7 +133,10 @@
   const data=await flow.workspace();status.textContent='';
   if(!data){body.append(el('p','Your transaction is being prepared.'));button('Back to selection',load);return;}
   body.append(el('h2',data.property.public_property_code),el('p','Transaction status · '+data.transaction.status));
-  if(activeId)body.prepend(el('h2','Active tenancy'));
+  if(activeId){
+   body.prepend(el('h2','Active tenancy'));
+   button('Open maintenance',()=>maintenance(flow,refreshTransaction));
+  }
   costs(data.transaction,'success_fee');
   body.append(el('h3','Tenancy agreement'),el('p',data.agreement?.document_status||'Agreement preparation is pending.'),
    el('p','Documents · '+data.document_count),el('p','Receipts · '+data.receipt_count),

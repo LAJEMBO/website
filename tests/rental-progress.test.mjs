@@ -165,3 +165,22 @@ test('rental history requests receipts only after validating the renter record',
  viewer='provider';await assert.rejects(flow.rentalHistoryRecord('closed'),/unavailable/);
  assert.equal(calls.at(-1)[0],'get_my_rental_history_detail');
 });
+
+test('maintenance is scoped to the opened active tenancy and only resolved requests can receive responses',async()=>{
+ const window={},calls=[];vm.runInNewContext(source,{window});
+ const client={rpc:async(name,args)=>{
+  calls.push([name,args]);
+  if(name==='get_my_active_tenancy')return{data:{open_maintenance:[{request_id:'resolved',status:'resolved'}]}};
+  return{data:'saved'};
+ }};
+ const flow=window.LajemboRentalProgress.create(client,{transactionId:'active'});
+ await flow.submitMaintenance({category:'plumbing',summary:'Leaking tap',description:'',urgency:'normal',attachments:[{asset_id:'photo',storage_path:'omit'}]});
+ assert.equal(calls.at(-1)[1].p_transaction_id,'active');
+ assert.equal(JSON.stringify(calls.at(-1)[1].p_media_manifest),'[{"asset_id":"photo"}]');
+ await assert.rejects(flow.respondToMaintenance('foreign','accept'),/no longer awaiting/);
+ assert.equal(calls.at(-1)[0],'get_my_active_tenancy');
+ await assert.rejects(flow.respondToMaintenance('resolved','reopen'),/reason/);
+ await flow.respondToMaintenance('resolved','reopen','Still leaking');
+ assert.equal(calls.at(-1)[1].p_note,'Still leaking');
+ await assert.rejects(window.LajemboRentalProgress.create(client).maintenance(),/active tenancy/);
+});

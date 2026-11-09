@@ -77,14 +77,51 @@
    if(!file||!types[file.type]||!file.size||file.size>26214400)throw Error('Choose a JPEG, PNG, WebP, MP4, WebM or MOV file no larger than 25 MB.');
    const current=await transactionSelection();if(current?.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before uploading.');
    const status=await rpc('get_my_move_in_protection_status',{p_transaction_id:shownId});if(status?.window_open!==true)throw Error('The reporting window is not open.');
+   return registerEvidence(shownId,file,types[file.type],'one_week_condition');
+  }
+  async function registerEvidence(shownId,file,extension,evidenceType){
    const user=await client.auth.getUser();if(user.error||!user.data?.user?.id)throw Error('Sign in again before uploading evidence.');
-   const path=shownId+'/'+user.data.user.id+'/one_week_condition-'+window.crypto.randomUUID()+'.'+types[file.type];
+   const path=shownId+'/'+user.data.user.id+'/'+evidenceType+'-'+window.crypto.randomUUID()+'.'+extension;
    const uploaded=await client.storage.from('transaction-evidence').upload(path,file,{contentType:file.type,upsert:false});
    if(uploaded.error)throw Error(uploaded.error.message);
    try{
-    const asset=await rpc('register_my_transaction_evidence',{p_transaction_id:shownId,p_evidence_type:'one_week_condition',p_storage_path:path});
+    const asset=await rpc('register_my_transaction_evidence',{p_transaction_id:shownId,p_evidence_type:evidenceType,p_storage_path:path});
     if(!asset?.asset_id)throw Error('Evidence registration was not confirmed.');return{asset_id:asset.asset_id};
    }catch(error){await client.storage.from('transaction-evidence').remove([path]);throw error;}
+  }
+  async function maintenance(){
+   if(!transactionId)throw Error('Open your active tenancy before managing maintenance.');
+   const tenancy=await rpc('get_my_active_tenancy',{p_transaction_id:transactionId});
+   if(!tenancy)throw Error('Your active tenancy is unavailable.');
+   return tenancy.open_maintenance||[];
+  }
+  async function uploadMaintenancePhoto(file){
+   const types={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'};
+   if(!file||!Object.hasOwn(types,file.type)||!file.size||file.size>26214400){
+    throw Error('Choose a JPEG, PNG or WebP photo up to 25 MB.');
+   }
+   await maintenance();
+   return registerEvidence(transactionId,file,types[file.type],'maintenance');
+  }
+  async function submitMaintenance({category,summary,description,urgency,attachments}){
+   if(!category.trim()||summary.trim().length<3)throw Error('Enter a category and a short summary.');
+   if(!['low','normal','high','urgent'].includes(urgency))throw Error('Choose a valid urgency.');
+   await maintenance();
+   const id=await rpc('submit_my_maintenance_request',{
+    p_transaction_id:transactionId,p_category:category.trim(),p_summary:summary.trim(),
+    p_description:description.trim()||null,p_urgency:urgency,
+    p_media_manifest:attachments.map(asset=>({asset_id:asset.asset_id}))
+   });
+   if(!id)throw Error('Maintenance submission was not confirmed.');
+  }
+  async function respondToMaintenance(id,action,note=''){
+   if(!['accept','reopen'].includes(action))throw Error('Choose a valid response.');
+   if(action==='reopen'&&!note.trim())throw Error('Enter a reason to reopen the request.');
+   const requests=await maintenance();
+   if(!requests.some(item=>item.request_id===id&&item.status==='resolved')){
+    throw Error('This request is no longer awaiting your response.');
+   }
+   await rpc('respond_to_my_maintenance_resolution',{p_request_id:id,p_action:action,p_note:note.trim()||null});
   }
   async function protection(){const current=await transactionSelection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});}
   async function submitConditionCheck(shownId,notes,manifest=[]){
@@ -115,7 +152,7 @@
    const result=await rpc('complete_my_move_in',{p_transaction_id:current.transaction_id});
    if(result?.status!=='completed')throw Error(result?.message||'Move-in completion was not confirmed.');return result;
   }
-  return{selection,activeTenancy,rentalHistory,rentalHistoryRecord,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
+  return{selection,activeTenancy,maintenance,uploadMaintenancePhoto,submitMaintenance,respondToMaintenance,rentalHistory,rentalHistoryRecord,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
  }
  window.LajemboRentalProgress={create};
 })();
