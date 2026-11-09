@@ -26,6 +26,7 @@
   if(data.costs){
    const card=costs(data.costs,'platform_fee');
    if(data.costs.confirmed_by_renter)card.append(el('p','Your acceptance of these costs is recorded.'));
+   else if(!data.costs.confirmed_by_provider)card.append(el('p','Waiting for the provider to confirm the final costs.'));
    else button('Accept disclosed move-in costs',async()=>{await flow.acceptCosts(data);await load();status.textContent='Your acceptance was submitted. Check the current selection status.';},card);
   }else body.append(el('p','LAJEMBO is preparing the full disclosed move-in costs.'));
   if(data.transaction_id)button('Open transaction details',transaction);

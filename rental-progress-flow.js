@@ -10,6 +10,7 @@
    if(!current||current.selection_intent_id!==shown.selection_intent_id||!current.costs||
     costFields.some(field=>current.costs[field]!==shown.costs[field]))throw Error('Your selection or costs changed. Refresh and review the current amounts.');
    if(current.costs.confirmed_by_renter)return;
+   if(!current.costs.confirmed_by_provider)throw Error('Provider confirmation is pending.');
    await rpc('accept_my_selection_costs',{p_selection_intent_id:current.selection_intent_id});
   }
   async function workspace(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_transaction_workspace',{p_transaction_id:current.transaction_id});}

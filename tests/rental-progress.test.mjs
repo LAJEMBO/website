@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const source=await readFile(new URL('../rental-progress-flow.js',import.meta.url),'utf8');
-const shown={selection_intent_id:'selection',transaction_id:'transaction',costs:{annual_rent:2000000,platform_fee:100000,caution_deposit:200000,legal_documentation_fee:0,service_charge:0,other_approved_charges:0,total_move_in_cost:2300000,confirmed_by_renter:false}};
+const shown={selection_intent_id:'selection',transaction_id:'transaction',costs:{annual_rent:2000000,platform_fee:100000,caution_deposit:200000,legal_documentation_fee:0,service_charge:0,other_approved_charges:0,total_move_in_cost:2300000,confirmed_by_renter:false,confirmed_by_provider:true}};
 function fixture(current=shown,error=null){
  const calls=[],window={};
  vm.runInNewContext(source,{window});
@@ -28,7 +28,10 @@ test('changed selections and costs require another review before acceptance',asy
 test('already accepted costs skip duplicate writes and server rejection remains visible',async()=>{
  const accepted=fixture({...shown,costs:{...shown.costs,confirmed_by_renter:true}});
  await accepted.flow.acceptCosts(shown);assert.equal(accepted.calls.length,1);
- await assert.rejects(fixture(shown,'Provider confirmation is pending').flow.acceptCosts(shown),/Provider confirmation/);
+ const pending=fixture({...shown,costs:{...shown.costs,confirmed_by_provider:false}});
+ await assert.rejects(pending.flow.acceptCosts(shown),/Provider confirmation/);
+ assert.equal(pending.calls.length,1);
+ await assert.rejects(fixture(shown,'Server rejected acceptance').flow.acceptCosts(shown),/Server rejected/);
 });
 test('transaction details use the current owner-scoped selection and handle pending transactions',async()=>{
  const pending=fixture({...shown,transaction_id:null});assert.equal(await pending.flow.workspace(),null);
