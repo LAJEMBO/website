@@ -1,7 +1,7 @@
 (() => {
  'use strict';
  const costFields=['annual_rent','platform_fee','caution_deposit','legal_documentation_fee','service_charge','other_approved_charges','total_move_in_cost'];
- function create(client){
+ function create(client,{transactionId}={}){
   async function rpc(name,args){const result=await client.rpc(name,args);if(result.error)throw Error(result.error.message);return result.data;}
   async function selection(){return rpc('get_my_selection_progress');}
   async function acceptCosts(shown){
@@ -13,9 +13,13 @@
    if(!current.costs.confirmed_by_provider)throw Error('Provider confirmation is pending.');
    await rpc('accept_my_reviewed_selection_costs',{p_selection_intent_id:current.selection_intent_id,p_reviewed_costs:Object.fromEntries(costFields.map(field=>[field,shown.costs[field]]))});
   }
-  async function workspace(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_transaction_workspace',{p_transaction_id:current.transaction_id});}
-  async function documents(){const current=await selection();if(!current?.transaction_id)return[];return (await rpc('get_my_transaction_documents',{p_transaction_id:current.transaction_id}))||[];}
-  async function receipts(){const current=await selection();if(!current?.transaction_id)return[];return (await rpc('get_my_payment_receipts',{p_transaction_id:current.transaction_id}))||[];}
+  async function activeTenancy(){return rpc('get_my_active_tenancy_dashboard');}
+  async function transactionSelection(){
+   return transactionId?{transaction_id:transactionId}:selection();
+  }
+  async function workspace(){const current=await transactionSelection();if(!current?.transaction_id)return null;return rpc('get_my_transaction_workspace',{p_transaction_id:current.transaction_id});}
+  async function documents(){const current=await transactionSelection();if(!current?.transaction_id)return[];return (await rpc('get_my_transaction_documents',{p_transaction_id:current.transaction_id}))||[];}
+  async function receipts(){const current=await transactionSelection();if(!current?.transaction_id)return[];return (await rpc('get_my_payment_receipts',{p_transaction_id:current.transaction_id}))||[];}
   async function documentLink(documentId){
    const available=await documents();if(!available.some(d=>d.document_id===documentId))throw Error('This document is no longer available in your current transaction.');
    const access=await rpc('get_my_transaction_document_access',{p_document_id:documentId});
@@ -61,7 +65,7 @@
   async function uploadConditionEvidence(shownId,file){
    const types={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','video/mp4':'mp4','video/webm':'webm','video/quicktime':'mov'};
    if(!file||!types[file.type]||!file.size||file.size>26214400)throw Error('Choose a JPEG, PNG, WebP, MP4, WebM or MOV file no larger than 25 MB.');
-   const current=await selection();if(current?.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before uploading.');
+   const current=await transactionSelection();if(current?.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before uploading.');
    const status=await rpc('get_my_move_in_protection_status',{p_transaction_id:shownId});if(status?.window_open!==true)throw Error('The reporting window is not open.');
    const user=await client.auth.getUser();if(user.error||!user.data?.user?.id)throw Error('Sign in again before uploading evidence.');
    const path=shownId+'/'+user.data.user.id+'/one_week_condition-'+window.crypto.randomUUID()+'.'+types[file.type];
@@ -72,17 +76,17 @@
     if(!asset?.asset_id)throw Error('Evidence registration was not confirmed.');return{asset_id:asset.asset_id};
    }catch(error){await client.storage.from('transaction-evidence').remove([path]);throw error;}
   }
-  async function protection(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});}
+  async function protection(){const current=await transactionSelection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});}
   async function submitConditionCheck(shownId,notes,manifest=[]){
    if(!notes?.trim())throw Error('Enter your condition notes before submitting.');
-   const current=await selection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before submitting.');
+   const current=await transactionSelection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh before submitting.');
    const status=await rpc('get_my_move_in_protection_status',{p_transaction_id:current.transaction_id});
    if(status?.window_open!==true)throw Error('The seven-day condition reporting window is not open.');
    const result=await rpc('submit_my_seven_day_condition_check',{p_transaction_id:current.transaction_id,p_notes:notes.trim(),p_media_manifest:manifest});
    if(result?.status!=='submitted'||!result.condition_record_id)throw Error('Condition checklist submission was not confirmed.');
    return result;
   }
-  async function readiness(){const current=await selection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_readiness',{p_transaction_id:current.transaction_id});}
+  async function readiness(){const current=await transactionSelection();if(!current?.transaction_id)return null;return rpc('get_my_move_in_readiness',{p_transaction_id:current.transaction_id});}
   async function respond(kind,id,action,note='',reviewed=null){
    if(!['condition','handover'].includes(kind)||!['acknowledge','dispute'].includes(action))throw Error('Invalid move-in response.');
    if(action==='dispute'&&!note.trim())throw Error('Please provide a reason for the dispute.');
@@ -95,13 +99,13 @@
    });
   }
   async function completeMoveIn(shownId){
-   const current=await selection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh it before continuing.');
+   const current=await transactionSelection();if(!current?.transaction_id||current.transaction_id!==shownId)throw Error('Your transaction changed. Refresh it before continuing.');
    const ready=await rpc('get_my_move_in_readiness',{p_transaction_id:current.transaction_id});
    if(!ready?.ready_for_clean_completion)throw Error('Required move-in checks are still pending.');
    const result=await rpc('complete_my_move_in',{p_transaction_id:current.transaction_id});
    if(result?.status!=='completed')throw Error(result?.message||'Move-in completion was not confirmed.');return result;
   }
-  return{selection,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
+  return{selection,activeTenancy,acceptCosts,workspace,documents,receipts,documentLink,acceptAgreement,readiness,respond,completeMoveIn,conditionEvidence,evidenceLink,protection,submitConditionCheck,uploadConditionEvidence,conditionDraft};
  }
  window.LajemboRentalProgress={create};
 })();

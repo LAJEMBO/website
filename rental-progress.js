@@ -2,7 +2,7 @@
  'use strict';
  const root=document.getElementById('rentalProgressApp'),auth=window.LajemboAuth;
  if(!root||!auth?.client||!window.LajemboRentalProgress)return;
- const flow=window.LajemboRentalProgress.create(auth.client);
+ const selectionFlow=window.LajemboRentalProgress.create(auth.client);
  const el=(tag,text)=>{const node=document.createElement(tag);if(text!=null)node.textContent=text;return node;};
  const money=amount=>new Intl.NumberFormat('en-NG',{style:'currency',currency:'NGN'}).format(amount);
  const status=el('p'),body=el('div');status.setAttribute('role','status');root.replaceChildren(status,body);
@@ -18,7 +18,8 @@
  }
  async function load(){
   status.textContent='Loading your property selection…';body.replaceChildren();
-  const data=await flow.selection();status.textContent='';
+  button('Open active tenancy',openActiveTenancy);
+  const data=await selectionFlow.selection();status.textContent='';
   if(!data){body.append(el('p','No property selection is ready yet. Record your decision after completing a viewing.'));button('Refresh selection',load);return;}
   body.append(el('h2',data.public_property_code),el('p',[data.area,data.city,data.property_type].filter(Boolean).join(' · ')),
    el('p','Selection status · '+data.status),el('p','Provider decision · '+(data.provider_decision||'Pending')));
@@ -27,16 +28,24 @@
    const card=costs(data.costs,'platform_fee');
    if(data.costs.confirmed_by_renter)card.append(el('p','Your acceptance of these costs is recorded.'));
    else if(!data.costs.confirmed_by_provider)card.append(el('p','Waiting for the provider to confirm the final costs.'));
-   else button('Accept disclosed move-in costs',async()=>{await flow.acceptCosts(data);await load();status.textContent='Your acceptance was submitted. Check the current selection status.';},card);
+   else button('Accept disclosed move-in costs',async()=>{await selectionFlow.acceptCosts(data);await load();status.textContent='Your acceptance was submitted. Check the current selection status.';},card);
   }else body.append(el('p','LAJEMBO is preparing the full disclosed move-in costs.'));
   if(data.transaction_id)button('Open transaction details',transaction);
   button('Refresh selection',load);
  }
- async function transaction(){
+ async function openActiveTenancy(){
+  const active=await selectionFlow.activeTenancy();
+  if(!active?.transaction?.id){status.textContent='No active tenancy found.';return;}
+  await transaction(active.transaction.id);
+ }
+ async function transaction(activeId){
+  const flow=activeId?window.LajemboRentalProgress.create(auth.client,{transactionId:activeId}):selectionFlow;
+  const refreshTransaction=()=>transaction(activeId);
   status.textContent='Loading your transaction…';body.replaceChildren();
   const data=await flow.workspace();status.textContent='';
   if(!data){body.append(el('p','Your transaction is being prepared.'));button('Back to selection',load);return;}
   body.append(el('h2',data.property.public_property_code),el('p','Transaction status · '+data.transaction.status));
+  if(activeId)body.prepend(el('h2','Active tenancy'));
   costs(data.transaction,'success_fee');
   body.append(el('h3','Tenancy agreement'),el('p',data.agreement?.document_status||'Agreement preparation is pending.'),
    el('p','Documents · '+data.document_count),el('p','Receipts · '+data.receipt_count),
@@ -62,7 +71,7 @@
     button('Accept tenancy agreement',async()=>{
      if(!reviewed||!check.checked)throw Error('Open the agreement and confirm that you have read and accepted its terms first.');
      if(!window.confirm('Record your acceptance of this tenancy agreement?'))return;
-     await flow.acceptAgreement(data);await transaction();status.textContent='Your agreement acceptance is recorded.';
+     await flow.acceptAgreement(data);await refreshTransaction();status.textContent='Your agreement acceptance is recorded.';
     },records);
    }
    records.append(el('h3','Payment receipts'));
@@ -80,10 +89,10 @@
    button('Acknowledge '+(kind==='condition'?'condition record':'possession handover'),async()=>{
     if(kind==='condition'&&record.media_count>0&&(!reviewed||reviewed.assets.some(a=>!reviewed.opened.includes(a.asset_id))))throw Error('Open all attached condition evidence before acknowledging.');
     if(!window.confirm('Confirm that you have reviewed and agree with this '+(kind==='condition'?'condition record':'possession handover')+'?'))return;
-    await flow.respond(kind,record.id,'acknowledge','',reviewed);await transaction();status.textContent='Your acknowledgement was recorded.';
+    await flow.respond(kind,record.id,'acknowledge','',reviewed);await refreshTransaction();status.textContent='Your acknowledgement was recorded.';
    },move);
    button('Dispute '+(kind==='condition'?'condition record':'possession handover'),async()=>{
-    await flow.respond(kind,record.id,'dispute',note.value);await transaction();status.textContent='Your dispute was recorded.';
+    await flow.respond(kind,record.id,'dispute',note.value);await refreshTransaction();status.textContent='Your dispute was recorded.';
    },move);
   }
   for(const record of data.move_in_conditions||[]){
@@ -116,7 +125,7 @@
     if(data.transaction.status==='completed')move.append(el('p','Move-in is complete.'));
     else if(ready.ready_for_clean_completion)button('Complete move-in',async()=>{
      if(!window.confirm('Confirm you are ready to complete move-in?'))return;
-     await flow.completeMoveIn(data.transaction.id);await transaction();status.textContent='Move-in completion was confirmed.';
+     await flow.completeMoveIn(data.transaction.id);await refreshTransaction();status.textContent='Move-in completion was confirmed.';
     },move);
    }
   }catch(error){move.append(el('p','Move-in readiness is unavailable. '+error.message));}
@@ -151,13 +160,13 @@
       },card);
       button('Save seven-day condition checklist',async()=>{
        await flow.submitConditionCheck(data.transaction.id,notes.value,attachments);
-       await transaction();status.textContent='Your seven-day condition checklist was saved to the tenancy record.';
+       await refreshTransaction();status.textContent='Your seven-day condition checklist was saved to the tenancy record.';
       },card);
      }else card.append(el('p',protection.window_open?'Your existing checklist is available above.':'The reporting window has closed. Your existing tenancy record remains available.'));
     }
    }catch(error){card.append(el('p','Unable to load move-in protection. '+error.message));}
   }
-  button('Refresh transaction details',transaction);button('Back to selection',load);
+  button('Refresh transaction details',refreshTransaction);button('Back to selection',load);
  }
  auth.ready.then(()=>run(load)).catch(()=>{status.textContent='Unable to restore your session. Log in again.';});
 })();

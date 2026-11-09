@@ -133,3 +133,20 @@ test('saved seven-day attachments use their own evidence category and reject uns
  const f=evidenceFixture();f.record.record_type='renter_one_week_checklist';await f.flow.conditionEvidence('condition');const list=f.calls.find(([n])=>n==='get_my_transaction_evidence');assert.equal(list[1].p_evidence_type,'one_week_condition');await f.flow.evidenceLink('condition','asset');
  f.record.record_type='unknown';await assert.rejects(f.flow.conditionEvidence('condition'),/not part|Unsupported/);
 });
+
+test('active tenancy records stay scoped to the server-selected tenancy when the latest selection changes',async()=>{
+ const window={},calls=[];vm.runInNewContext(source,{window});
+ const client={rpc:async(name,args)=>{
+  calls.push([name,args]);
+  if(name==='get_my_active_tenancy_dashboard')return{data:{transaction:{id:'active'}}};
+  if(name==='get_my_selection_progress')return{data:{transaction_id:'new-selection'}};
+  return{data:null};
+ }};
+ const active=await window.LajemboRentalProgress.create(client).activeTenancy();
+ const flow=window.LajemboRentalProgress.create(client,{transactionId:active.transaction.id});
+ await flow.workspace();await flow.documents();await flow.receipts();await flow.protection();
+ assert.deepEqual(calls.slice(1).map(([name,args])=>[name,args.p_transaction_id]),[
+  ['get_my_transaction_workspace','active'],['get_my_transaction_documents','active'],
+  ['get_my_payment_receipts','active'],['get_my_move_in_protection_status','active'],
+ ]);
+});
