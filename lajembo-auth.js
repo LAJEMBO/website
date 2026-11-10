@@ -66,12 +66,12 @@
   const allowedReturns=new Set(['registration.html','provider-registration.html','exclusive-provider-application.html','provider-workspace.html']);
   async function destination() {
     await ready;
-    const {data,error}=await client.rpc('get_my_onboarding_experience');if(error)throw Error('Unable to load your account. Please retry.');
     const requested=new URLSearchParams(location.search).get('return');
     if(requested==='staff-identity-review.html'){
       const review=await client.rpc('is_staff_role',{required_roles:['founder','admin','trust_safety']});
       if(!review.error&&review.data===true)return requested;
     }
+    const {data,error}=await client.rpc('get_my_onboarding_experience');if(error)throw Error('Unable to load your account. Please retry.');
     const renter=data?.account_type==='home_seeker',provider=data?.account_type==='provider';
     if(allowedReturns.has(requested)&&((renter&&requested==='registration.html')||(provider&&requested!=='registration.html')))return requested==='registration.html'?requested+'?intent=renter':requested;
     return provider?'provider-workspace.html':renter?'rentals.html':'index.html';
