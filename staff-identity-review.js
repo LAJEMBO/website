@@ -7,6 +7,7 @@
   let selectedKind = null;
   let authorized = false;
   let generation = 0;
+  let reviewerUserId = null;
 
   function message(text) { element('status').textContent = text; }
   function updateButtons() {
@@ -141,12 +142,19 @@
   element('review').onsubmit = event => { event.preventDefault(); void decide('approved'); };
   element('moreInfo').onclick = () => void decide('needs_more_info');
   element('reject').onclick = () => void decide('rejected');
-  auth.client.auth.onAuthStateChange((event) => {
-    if (event === 'SIGNED_OUT') { clearWorkspace(); element('login').hidden = false; message('Sign in to continue.'); }
+  auth.client.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT' || (reviewerUserId && session?.user?.id && session.user.id !== reviewerUserId)) {
+      clearWorkspace();
+      element('login').hidden = false;
+      message('Your account session changed. Sign in again to open identity review.');
+    }
   });
   void auth.ready.then(async session => {
     if (!session) { element('login').hidden = false; message('Sign in to continue.'); return; }
+    reviewerUserId = session.user.id;
+    const currentGeneration = generation;
     const allowed = await rpc('is_staff_role', { required_roles: ['founder', 'admin', 'trust_safety'] });
+    if (generation !== currentGeneration) return;
     if (allowed !== true) throw new Error('An authorized identity reviewer account is required.');
     authorized = true;
     element('workspace').hidden = false;
