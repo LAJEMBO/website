@@ -68,6 +68,10 @@
     await ready;
     const {data,error}=await client.rpc('get_my_onboarding_experience');if(error)throw Error('Unable to load your account. Please retry.');
     const requested=new URLSearchParams(location.search).get('return');
+    if(requested==='staff-identity-review.html'){
+      const review=await client.rpc('is_staff_role',{required_roles:['founder','admin','trust_safety']});
+      if(!review.error&&review.data===true)return requested;
+    }
     const renter=data?.account_type==='home_seeker',provider=data?.account_type==='provider';
     if(allowedReturns.has(requested)&&((renter&&requested==='registration.html')||(provider&&requested!=='registration.html')))return requested==='registration.html'?requested+'?intent=renter':requested;
     return provider?'provider-workspace.html':renter?'rentals.html':'index.html';
@@ -95,5 +99,18 @@
     if(target){const a=document.createElement('a');a.href='login.html';a.textContent='Log in / Account';a.className='lajembo-account-link';target.prepend(a);}
   }
   document.readyState==='loading'?document.addEventListener('DOMContentLoaded',addControls):addControls();
+  void ready.then(async session=>{
+    if(!session)return;
+    const {data,error}=await client.rpc('is_staff_role',{required_roles:['founder','admin','trust_safety']});
+    if(error||data!==true)return;
+    const host=document.getElementById('signedIn')||document.querySelector('.header-actions');
+    if(!host)return;
+    const link=document.createElement('a');
+    link.href='staff-identity-review.html';
+    link.textContent='Identity review';
+    link.className='lajembo-account-link';
+    host.append(link);
+  }).catch(()=>{});
+
 })();
 
