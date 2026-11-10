@@ -32,14 +32,21 @@
   status.textContent=best.size?'':'Approved media is being prepared. Check again later.';button.textContent='Refresh photos & video';
  }catch(e){status.textContent=e.message}finally{button.disabled=false}}}
  async function rentals(){const host=document.getElementById('propertyMatches');if(!host)return;const refresh=el('button','Refresh matches'),status=el('p'),list=el('div');status.setAttribute('role','status');refresh.className='info-button';host.append(el('h2','Homes matched to your requirements'),status,list,refresh);
- async function load(){refresh.disabled=true;list.replaceChildren();try{await A.ready;const auth=await client.auth.getUser();if(auth.error||!auth.data.user){status.textContent='Log in to view your protected property matches.';return}
+ let reviewPending=false;
+ async function load(){
+ const checkingReview=reviewPending;
+ reviewPending=false;
+ refresh.disabled=true;
+ refresh.textContent=checkingReview?'Checking status…':'Loading…';
+ status.textContent=checkingReview?'Checking your identity review status…':'Loading your matches…';
+ list.replaceChildren();try{await A.ready;const auth=await client.auth.getUser();if(auth.error||!auth.data.user){status.textContent='Log in to view your protected property matches.';return}
  const customer=await rpc('get_my_customer_profile');if(customer.account_type!=='home_seeker'){status.textContent='A renter account is required for property matching.';return}
  document.getElementById('renterContinue').textContent='Review my requirements';const p=await client.from('home_profiles').select('id,active').eq('user_id',auth.data.user.id).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(1);if(p.error)throw Error('Unable to load saved requirements.');const profile=p.data?.[0];
- if(!profile){status.textContent='Set your home requirements before viewing matches.';return}if(['pending','manual_review'].includes(customer.identity_verification_status)){status.textContent='Your requirements are saved. Identity review is pending; matching becomes available after approval.';return}if(customer.identity_verification_status!=='verified'||customer.account_status!=='active'){status.textContent='An active verified renter account is required for matching.';return}if(!profile.active){status.textContent='Your requirements are saved but this search is inactive. Review your requirements to continue.';return}
+ if(!profile){status.textContent='Set your home requirements before viewing matches.';return}if(['pending','manual_review'].includes(customer.identity_verification_status)){reviewPending=true;status.textContent=checkingReview?'Your identity review is still pending. Your requirements are saved, and matches will become available after approval.':'Your requirements are saved. Identity review is pending; matches will become available after approval.';return}if(customer.identity_verification_status!=='verified'||customer.account_status!=='active'){status.textContent='An active verified renter account is required for matching.';return}if(!profile.active){status.textContent='Your requirements are saved but this search is inactive. Review your requirements to continue.';return}
  let matches=await rpc('get_my_privacy_safe_home_matches',{p_home_profile_id:profile.id,p_limit:30});const category=new URLSearchParams(location.search).get('category');matches=matches.filter(m=>category==='Apartments'?/apartment/i.test(m.property_type):category==='Duplexes'?/duplex/i.test(m.property_type):category==='Furnished'?m.furnished===true:category==='Unfurnished'?m.furnished===false:true);document.getElementById('renterContinue').textContent='Review my requirements';status.textContent=matches.length?'Exact property addresses remain protected.':'No published properties currently match your requirements.';
  for(const m of matches){const card=el('article');card.className='info-card media-box';card.append(el('h3',`${m.bedrooms??'—'} bed · ${m.bathrooms??'—'} bath · ${m.property_type}`),el('p',m.public_property_code),el('p',[m.estate,m.neighborhood,m.area,m.city,m.state].filter(Boolean).join(', ')),el('p',`₦${Number(m.annual_rent).toLocaleString('en-NG')} annual rent`),el('p',`Total move-in cost: ₦${Number(m.total_move_in_cost).toLocaleString('en-NG')}`));gallery(m.listing_id,card);list.append(card)}
  if(matches.length){const next=el('a','Choose homes for viewing');next.href='viewings.html';next.className='info-button';list.append(next)}
- }catch(e){status.textContent=e.message||'Unable to load matches. Try again.'}finally{refresh.disabled=false}}
+ }catch(e){status.textContent=e.message||'Unable to load matches. Try again.'}finally{refresh.textContent=reviewPending?'Check review status':'Refresh matches';refresh.disabled=false}}
  refresh.onclick=load;await load();
  }
  function scan(){document.querySelectorAll('.property[data-listing]').forEach(provider)}
