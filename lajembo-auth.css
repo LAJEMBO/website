@@ -2,7 +2,7 @@
 
 /* Shared highlight for clickable actions. */
 button, [role="button"], a.primary, a.secondary, a.action, a.info-button {
-  background-color: #E8C77C !important;
+  background-color: #D6B89A !important;
   color: #071A2C !important;
 }
 a[href]:focus-visible, button:focus-visible, [role="button"]:focus-visible {
