@@ -98,7 +98,49 @@
     const target=document.querySelector('.header-actions');
     if(target){const a=document.createElement('a');a.href='login.html';a.textContent='Log in / Account';a.className='lajembo-account-link';target.prepend(a);}
   }
-  document.readyState==='loading'?document.addEventListener('DOMContentLoaded',addControls):addControls();
+  let identityGeneration = 0;
+  function displayName(profile, metadata = {}) {
+    const text = value => typeof value === 'string' ? value.trim() : '';
+    return text(profile?.preferred_name)
+      || [text(profile?.first_name), text(profile?.last_name)].filter(Boolean).join(' ')
+      || text(metadata.preferred_name) || text(metadata.username) || text(metadata.full_name)
+      || text(metadata.name) || 'Your account';
+  }
+  function renderAccountIdentity(session, name) {
+    const target = document.querySelector('.header-actions .lajembo-account-link');
+    if (target) target.textContent = session ? 'Account · ' + name : 'Log in / Account';
+    const menu = document.getElementById('menu');
+    let identity = menu?.querySelector('[data-account-identity]');
+    if (!session) { identity?.remove(); return; }
+    if (menu && !identity) {
+      identity = document.createElement('p');
+      identity.dataset.accountIdentity = 'true';
+      identity.setAttribute('aria-live', 'polite');
+      identity.style.cssText = 'margin:0;padding:12px 0;border-bottom:1px solid #d4c8b8;overflow-wrap:anywhere';
+      menu.prepend(identity);
+    }
+    if (identity) identity.textContent = 'Signed in as ' + name;
+  }
+  async function loadAccountIdentity(session, token) {
+    if (!session) return;
+    try {
+      const profile = await client.rpc('get_my_customer_profile');
+      if (token === identityGeneration && !profile.error) renderAccountIdentity(session, displayName(profile.data, session.user.user_metadata));
+    } catch { /* Keep the signed-in account label if the profile is unavailable. */ }
+  }
+  function updateAccountIdentity(session) {
+    const token = ++identityGeneration;
+    renderAccountIdentity(session, session ? displayName(null, session.user.user_metadata) : '');
+    // Defer database calls until outside the Auth callback.
+    if (session) setTimeout(() => { if (token === identityGeneration) void loadAccountIdentity(session, token); }, 0);
+  }
+  function startAccountIdentity() {
+    addControls();
+    const token = identityGeneration;
+    void ready.then(session => { if (token === identityGeneration) updateAccountIdentity(session); }).catch(() => {});
+    client.auth.onAuthStateChange((_event, session) => updateAccountIdentity(session));
+  }
+  document.readyState==='loading'?document.addEventListener('DOMContentLoaded',startAccountIdentity):startAccountIdentity();
   void ready.then(async session=>{
     if(!session)return;
     const {data,error}=await client.rpc('is_staff_role',{required_roles:['founder','admin','trust_safety']});
@@ -113,4 +155,5 @@
   }).catch(()=>{});
 
 })();
+
 
