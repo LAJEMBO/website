@@ -9,6 +9,8 @@
   let authorized = false;
   let generation = 0;
   let reviewerUserId = null;
+  let founder = false;
+  let clientRecordLink;
 
   function message(text) { element('status').textContent = text; }
   function updateButtons() {
@@ -31,6 +33,8 @@
     if(photoCleanup)photoCleanup();
     selected = null;
     selectedKind = null;
+    if(clientRecordLink)clientRecordLink.remove();
+    clientRecordLink=null;
     element('review').reset();
     element('review').hidden = true;
   }
@@ -90,6 +94,7 @@
       photoCleanup=await window.LajemboIdentityPhotos(element('identityPhotos'),kind,item.submission_id,false);
       selected = detail;
       selectedKind = kind;
+      if(founder){clientRecordLink=text('a','View full client record');clientRecordLink.href='founder-clients.html?submission='+encodeURIComponent(item.submission_id);element('applicant').after(clientRecordLink);}
       element('applicant').textContent = item.applicant_name || item.provider_name || 'Applicant';
       element('submission').textContent = 'Submission ' + item.submission_id;
       element('previousNote').textContent = detail.review_note || '';
@@ -159,6 +164,8 @@
     const allowed = await rpc('is_staff_role', { required_roles: ['founder', 'admin', 'trust_safety'] });
     if (generation !== currentGeneration) return;
     if (allowed !== true) throw new Error('An authorized identity reviewer account is required.');
+    founder = await rpc('is_staff_role', { required_roles: ['founder'] }) === true;
+    if (generation !== currentGeneration) return;
     authorized = true;
     element('workspace').hidden = false;
     await loadQueue();
