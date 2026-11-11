@@ -16,6 +16,7 @@ label{display:block;margin:16px 0}input:not([type=checkbox]),textarea{display:bl
 </style>
 <script defer src="vendor/supabase-2.116.0.js"></script>
 <script defer src="lajembo-auth.js"></script>
+<script defer src="identity-photos.js"></script>
 <script defer src="staff-identity-review.js"></script>
 </head>
 <body>
@@ -32,7 +33,7 @@ label{display:block;margin:16px 0}input:not([type=checkbox]),textarea{display:bl
 <form id="review" hidden>
 <fieldset id="reviewFields">
 <legend>Manual identity review</legend>
-<h2 id="applicant"></h2><p id="submission"></p><p id="previousNote"></p>
+<div id="identityPhotos"></div><h2 id="applicant"></h2><p id="submission"></p><p id="previousNote"></p>
 <p id="selfReview" hidden>An independent reviewer must approve your identity.</p>
 <p>Inspect the supporting identity evidence through the secure review process. A document reference alone does not establish identity. Record only evidence actually inspected.</p>
 <label>Secure evidence or review-record reference <input id="evidence" maxlength="500" autocomplete="off" placeholder="Exclude the full ID number"></label>
