@@ -25,7 +25,6 @@
    const data=await rpc(detail?'founder_get_client_record':'founder_get_client_directory',detail?(userId?{p_user_id:userId}:{p_submission_id:initialSubmission}):{p_search:el('query').value.trim(),p_offset:page});
    if(token!==generation||!allowed)return;
    if(detail){
-    el('records').append(node('h2','Client ID photos and selfies'));
     for(const kind of ['renter','provider'])for(const item of data[kind+'_identity']||[]){
      const photos=document.createElement('article');el('records').append(photos);
      photos.setAttribute('aria-label',kind==='renter'?'Renter identity photos':'Provider identity photos');
