@@ -2,6 +2,7 @@
   'use strict';
   const auth = window.LajemboAuth;
   const element = id => document.getElementById(id);
+  let photoCleanup;
   let busy = false;
   let selected = null;
   let selectedKind = null;
@@ -27,6 +28,7 @@
     return data;
   }
   function clearReview() {
+    if(photoCleanup)photoCleanup();
     selected = null;
     selectedKind = null;
     element('review').reset();
@@ -85,6 +87,7 @@
         ? await rpc('get_provider_identity_review_detail', { p_submission_id: item.submission_id })
         : item;
       if (generation !== currentGeneration || !authorized) return;
+      photoCleanup=await window.LajemboIdentityPhotos(element('identityPhotos'),kind,item.submission_id,false);
       selected = detail;
       selectedKind = kind;
       element('applicant').textContent = item.applicant_name || item.provider_name || 'Applicant';
