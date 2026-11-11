@@ -11,7 +11,7 @@ function fixture({status='pending',failCheckout=false,saveError=false,identity='
 const item=(id,locked=false)=>({listing_id:id,shortlist_id:'mine',shortlist_status:locked?'locked_for_viewing':'ready',renter_decision:locked?'selected_for_viewing':'not_selected'});
 test('website restores current owner shortlist and denies unverified renter before generation',async()=>{
  const f=fixture();assert.equal((await f.flow.load()).length,1);assert.ok(f.filters.some(x=>x[0]==='home_profiles'&&x[1]==='user_id'&&x[2]==='me'));
- const denied=fixture({identity:'pending'});await assert.rejects(denied.flow.load(),/approved identity/);assert.equal(denied.calls.some(x=>x[0]==='generate_my_match_shortlist'),false);
+ const denied=fixture({identity:'pending'});await assert.rejects(denied.flow.load(),/Identity review is pending/);assert.equal(denied.calls.some(x=>x[0]==='generate_my_match_shortlist'),false);
 });
 test('website retains locked choices on checkout error and retry skips saving again',async()=>{
  const f=fixture({failCheckout:true});const r=await f.flow.confirm([item('a')],['a']);assert.equal(r.saved,true);assert.match(r.error,/Checkout unavailable/);
