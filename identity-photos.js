@@ -73,7 +73,7 @@
         label.append(input,button);host.append(label);
       }
     }
-    const listener=client.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'){active=false;clear();host.replaceChildren();}});
+    const listener=client.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'||event==='SIGNED_IN'){active=false;clear();host.replaceChildren();}});
     void run(load);
     return ()=>{active=false;clear();listener.data.subscription.unsubscribe();host.replaceChildren();};
   };
