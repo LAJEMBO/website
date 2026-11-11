@@ -35,3 +35,5 @@ button *, [role="button"] * { color: inherit !important; }
 .header-actions a:hover, .desktop-nav a:hover, .footer-links a:hover { color: #E8C77C; }
 .menu a:hover { background: #F5E8C9; }
 .menu-button { background: #071A2C !important; color: #FFFFFF !important; border: 1px solid #D6B07A; border-radius: 8px; }
+
+.journey-actions .service-cta { display: flex; align-items: center; min-height: 64px; line-height: 1.35; }
