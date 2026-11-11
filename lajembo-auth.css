@@ -10,3 +10,5 @@ a[href]:focus-visible, button:focus-visible, [role="button"]:focus-visible {
   outline-offset: 3px;
 }
 button:disabled { opacity: .48; cursor: default; }
+
+a[href] *, button *, [role="button"] * { color: inherit !important; }
