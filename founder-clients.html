@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Client records | LAJEMBO</title>
+<link rel="stylesheet" href="lajembo-auth.css">
+<style>
+body{margin:0;background:#f7f3ea;color:#102439;font:16px/1.5 system-ui,sans-serif}
+header,main,footer{max-width:840px;margin:auto;padding:24px}header{display:flex;gap:24px;align-items:center}
+a{color:#102439}h1,h2{line-height:1.2}button{padding:14px 20px;border:1px solid #d4c8b8;border-radius:8px;font:inherit;cursor:pointer;background:#fff;color:#102439}
+button.primary{background:#dba02c;font-weight:700}button:disabled{opacity:.5;cursor:default}
+article,fieldset{background:#fff;border:1px solid #d4c8b8;border-radius:12px;padding:24px;margin:20px 0}
+label{display:block;margin:16px 0}input:not([type=checkbox]),textarea{display:block;box-sizing:border-box;width:100%;padding:12px;font:inherit;border:1px solid #b7aa99;border-radius:6px}
+.actions{display:flex;gap:12px;flex-wrap:wrap}[hidden]{display:none!important}
+</style>
+<script defer src="vendor/supabase-2.116.0.js"></script>
+<script defer src="lajembo-auth.js"></script>
+<script defer src="identity-photos.js"></script>
+<script defer src="founder-clients.js"></script>
+</head>
+<body>
+<header><a href="index.html">LAJEMBO</a><a href="login.html">Account</a></header>
+<main><h1>Founder client records</h1><p id="status" role="status" aria-live="polite">Checking access…</p><a id="login" href="login.html" hidden>Sign in to continue</a><section id="workspace" hidden><label>Client name or phone <input id="query" maxlength="120" autocomplete="off"></label><button id="search" type="button">Search clients</button><div id="records"></div><div class="actions"><button id="previous" disabled>Previous clients</button><button id="next" disabled>Next clients</button></div></section></main>
+<footer><a href="help-support.html">Help &amp; Support</a> | <a href="https://legal.lajembo.com/privacy-policy/">Privacy &amp; Data</a> | <a href="https://legal.lajembo.com/terms-and-conditions/">Terms</a><p>© 2026 LAJEMBO. All rights reserved.</p></footer>
+</body></html>
