@@ -1,8 +1,8 @@
 .lajembo-auth-overlay{position:fixed;inset:0;z-index:1000;background:#0008;display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto}.lajembo-auth-dialog,.lajembo-login-card{background:#fff;color:#10233d;border:1px solid #d9dfe6;border-radius:16px;padding:28px;max-width:560px;width:100%;max-height:90vh;overflow:auto}.lajembo-auth-dialog form,.lajembo-login-card form{display:grid;gap:16px}.lajembo-auth-dialog label,.lajembo-login-card label{display:grid;gap:8px;font-weight:700}.lajembo-auth-dialog input,.lajembo-login-card input{box-sizing:border-box;width:100%;font:inherit;color:#10233d;border:1px solid #bcc6cf;border-radius:9px;padding:14px;min-height:48px}.lajembo-auth-dialog button,.lajembo-login-card button,.lajembo-login-card .action{display:block;text-align:center;background:#c58d37;color:#10233d;border:0;border-radius:9px;padding:14px;font:inherit;font-weight:800;cursor:pointer;min-height:48px;text-decoration:none}.lajembo-login-card .secondary{background:#f5f2ed;border:1px solid #bcc6cf;margin:12px 0}.lajembo-auth-dialog button:disabled,.lajembo-login-card button:disabled{opacity:.6;cursor:wait}.lajembo-auth-dialog p,.lajembo-login-card p{line-height:1.6}.lajembo-login-main{background:#f5f2ed;padding:48px 20px;min-height:65vh;display:flex;justify-content:center;align-items:flex-start}.lajembo-login-card{max-height:none}.lajembo-login-card [hidden]{display:none!important}.lajembo-login-card .sms-consent{display:flex;align-items:flex-start;font-weight:400;line-height:1.5}.lajembo-login-card .sms-consent input{width:24px;min-height:24px;flex-shrink:0}.lajembo-login-card a,.lajembo-auth-links a{color:#10233d;font-weight:700}.lajembo-login-card [role=status]{white-space:pre-line}.header-actions .lajembo-account-link{display:inline-block!important;font-weight:700}@media(max-width:600px){.lajembo-auth-dialog,.lajembo-login-card{padding:20px}.lajembo-login-main{padding:24px 12px}}
 
 /* Shared highlight for clickable actions. */
-a[href], button, [role="button"] {
-  background-color: #E9AA32 !important;
+button, [role="button"], a.primary, a.secondary, a.action, a.info-button {
+  background-color: #E8C77C !important;
   color: #071A2C !important;
 }
 a[href]:focus-visible, button:focus-visible, [role="button"]:focus-visible {
@@ -11,4 +11,4 @@ a[href]:focus-visible, button:focus-visible, [role="button"]:focus-visible {
 }
 button:disabled { opacity: .48; cursor: default; }
 
-a[href] *, button *, [role="button"] * { color: inherit !important; }
+button *, [role="button"] * { color: inherit !important; }
