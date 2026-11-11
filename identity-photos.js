@@ -12,14 +12,14 @@
     const images = document.createElement('div');
     const previewStatus = document.createElement('p');
     const refresh = document.createElement('button');
-    refresh.type = 'button'; refresh.textContent = 'Refresh private photos';
+    refresh.type = 'button'; refresh.textContent = 'Check for uploaded photos';
     host.replaceChildren(heading, checklist, status, refresh, previewStatus, images);
     const name = kind => kind === 'document' ? 'ID photo' : 'Selfie';
     function line(value) { const p = document.createElement('p'); p.textContent = value; return p; }
     function progress() {
       checklist.replaceChildren(line('Document details: saved with this identity submission.'));
       for (const kind of ['document', 'selfie']) checklist.append(line(name(kind) + ': ' + (counts === null ? 'not yet confirmed' : counts[kind] ? 'saved privately' : 'not uploaded')));
-      checklist.append(line(!counts ? 'Tap Refresh private photos if the saved-photo check does not complete.'
+      checklist.append(line(!counts ? 'Tap Check for uploaded photos if the saved-photo check does not complete.'
         : counts.document && counts.selfie ? (upload ? 'Both photos are saved. Your photos still require LAJEMBO review. You can return to your account; uploading does not verify your identity.' : 'Both photos are saved. Inspect the ID and selfie before recording an identity review.')
         : !counts.document ? (upload ? 'Next: take and upload a clear ID photo.' : 'The ID photo is missing. Approval requires both an ID photo and selfie.')
         : (upload ? 'Next: take and upload your current selfie.' : 'The selfie is missing. Approval requires both an ID photo and selfie.')));
@@ -51,17 +51,17 @@
         image.alt = file.kind === 'selfie' ? 'Submitted selfie' : 'Submitted identity document';
         image.style.cssText = 'max-width:100%;max-height:440px;object-fit:contain';
         image.referrerPolicy = 'no-referrer';
-        image.onerror = () => { if(active) previewStatus.textContent = 'A saved-photo preview could not be displayed. Tap Refresh private photos.'; };
+        image.onerror = () => { if(active) previewStatus.textContent = 'A saved-photo preview could not be displayed. Tap Check for uploaded photos.'; };
         const caption = document.createElement('figcaption');
         caption.textContent = upload ? 'Saved ' + name(file.kind).toLowerCase() : file.path;
         figure.append(image,caption); images.append(figure);
       }
       if (active) {
-        previewStatus.textContent = failed ? 'Saved photos were found, but a preview could not be loaded. Tap Refresh private photos.'
+        previewStatus.textContent = failed ? 'Saved photos were found, but a preview could not be loaded. Tap Check for uploaded photos.'
           : files.length ? 'Private previews expire after one minute. Your uploads remain saved for review.' : '';
         timer = setTimeout(() => {
           clear();
-          if(active && files.length) previewStatus.textContent = 'Photo previews have been hidden for privacy. Your uploads remain saved. Tap Refresh private photos to view them again.';
+          if(active && files.length) previewStatus.textContent = 'Photo previews have been hidden for privacy. Your uploads remain saved. Tap Check for uploaded photos to view them again.';
         },60000);
       }
     }
@@ -97,7 +97,7 @@
           if(counts) { counts = {...counts,[kind]:counts[kind]+1}; progress(); }
           status.textContent=name(kind)+' uploaded and saved privately.';
           try { await load(); }
-          catch { if(active) status.textContent=name(kind)+' was saved, but the saved-photo list could not refresh. Tap Refresh private photos. You do not need to upload it again.'; }
+          catch { if(active) status.textContent=name(kind)+' was saved, but the saved-photo list could not refresh. Tap Check for uploaded photos. You do not need to upload it again.'; }
         });
         label.append(input,button);host.append(label);
       }
@@ -105,7 +105,7 @@
     function hide() {
       if(document.hidden) {
         generation++; clear();
-        if(counts && (counts.document || counts.selfie)) previewStatus.textContent='Photo previews have been hidden for privacy. Your uploads remain saved. Tap Refresh private photos to view them again.';
+        if(counts && (counts.document || counts.selfie)) previewStatus.textContent='Photo previews have been hidden for privacy. Your uploads remain saved. Tap Check for uploaded photos to view them again.';
       }
     }
     document.addEventListener('visibilitychange',hide);
