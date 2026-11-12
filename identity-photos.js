@@ -141,10 +141,18 @@
           panel.setAttribute('aria-label',camera.textContent);
           panel.style.cssText='max-width:90vw;max-height:90vh;overflow:auto;background:#f7f3ea;color:#102439;border-radius:12px';
           const video=document.createElement('video');video.autoplay=true;video.muted=true;video.playsInline=true;video.style.cssText='display:block;width:100%;max-height:60vh';
-          const take=document.createElement('button');take.type='button';take.textContent='Use this photo';take.disabled=true;
+          const take=document.createElement('button');take.type='button';take.textContent='Take Photo';take.disabled=true;
           const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';cancel.onclick=()=>{stopCamera();status.textContent='Capture cancelled. No new photo was uploaded.';};
           panel.addEventListener('cancel',()=>{stopCamera();status.textContent='Capture cancelled. No new photo was uploaded.';});
-          panel.append(video,take,cancel);host.append(panel);panel.showModal();
+          const canvas=document.createElement('canvas');canvas.hidden=true;canvas.style.cssText='width:100%;max-height:60vh;object-fit:contain';
+          const use=document.createElement('button');use.type='button';use.textContent='Use Photo';use.hidden=true;
+          const retake=document.createElement('button');retake.type='button';retake.textContent='Retake';retake.hidden=true;
+          const feedback=line('Position the document or your face in the preview, then select Take Photo.');feedback.setAttribute('role','status');
+          for(const control of [take,use]){control.style.setProperty('background-color','#102A43','important');control.style.setProperty('color','#ffffff','important');control.style.cssText+=';min-height:54px;padding:14px 24px';}
+          let captured=null;
+          retake.onclick=()=>{captured=null;canvas.hidden=true;video.hidden=false;video.style.display='block';take.hidden=false;take.disabled=false;use.hidden=true;retake.hidden=true;feedback.textContent='Ready. Select Take Photo to capture again.';};
+          use.onclick=()=>{if(!captured)return;const file=new File([captured],kind+'.jpg',{type:'image/jpeg'});stopCamera();select(file);};
+          panel.append(video,canvas,feedback,take,use,retake,cancel);host.append(panel);panel.showModal();
           try {
             const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:kind==='selfie'?'user':'environment'},audio:false});
             if(!active || cameraDialog!==panel){stream.getTracks().forEach(track=>track.stop());return;}
@@ -154,10 +162,15 @@
           take.onclick=()=>{
             if(!video.videoWidth || !video.videoHeight)return;
             take.disabled=true;
-            const canvas=document.createElement('canvas'),scale=Math.min(1,1600/Math.max(video.videoWidth,video.videoHeight));
+            const scale=Math.min(1,1600/Math.max(video.videoWidth,video.videoHeight));
             canvas.width=Math.round(video.videoWidth*scale);canvas.height=Math.round(video.videoHeight*scale);
             canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
-            canvas.toBlob(blob=>{if(active && cameraDialog===panel){if(blob)select(new File([blob],kind+'.jpg',{type:'image/jpeg'}));else status.textContent='Unable to read this photo. Please try again.';stopCamera();}},'image/jpeg',0.8);
+            canvas.toBlob(blob=>{
+              if(!active || cameraDialog!==panel)return;
+              if(!blob){take.disabled=false;feedback.textContent='Unable to capture the photo. Please try again.';return;}
+              captured=blob;video.hidden=true;video.style.display='none';canvas.hidden=false;take.hidden=true;use.hidden=false;retake.hidden=false;
+              feedback.textContent='Photo captured. Select Use Photo to save it, or Retake.';
+            },'image/jpeg',0.8);
           };
         };
         async function saveSelected(){
@@ -190,5 +203,6 @@
     return ()=>{active=false;generation++;stopCamera();clear();if(dialog && dialog.open)dialog.close();document.removeEventListener('visibilitychange',hide);listener.data.subscription.unsubscribe();host.replaceChildren();};
   };
 })();
+
 
 
