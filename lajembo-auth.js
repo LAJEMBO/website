@@ -77,7 +77,12 @@
   async function destination() {
     await ready;
     const requested=new URLSearchParams(location.search).get('return');
-    if(['founder-security.html','founder-clients.html','staff-identity-review.html'].includes(requested)){const s=await client.rpc('get_my_founder_security_status');if(s.data?.is_founder)return s.data.challenge_required?'founder-security.html?return='+requested:requested;}
+    const security=await client.rpc('get_my_founder_security_status');
+    if(security.error)throw Error('Unable to check your account access. Please retry.');
+    if(security.data?.is_founder){
+      const target=['founder-clients.html','staff-identity-review.html'].includes(requested)?requested:'founder-clients.html';
+      return security.data.challenge_required||!security.data.enabled?'founder-security.html?return='+target:target;
+    }
     if(requested==='staff-identity-review.html'){
       const review=await client.rpc('is_staff_role',{required_roles:['founder','admin','trust_safety']});
       if(!review.error&&review.data===true)return requested;
