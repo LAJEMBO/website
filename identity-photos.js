@@ -3,7 +3,11 @@
   window.LajemboIdentityPhotos = async function(host, subject, submissionId, upload) {
     const client = window.LajemboAuth.client;
     let active = true, busy = false, timer, counts = null, generation = 0, isOpen = upload;
-    let dialog, openButton, summary;
+    let dialog, openButton, summary, cameraDialog, cameraStream;
+    function stopCamera() {
+      cameraStream?.getTracks().forEach(track => track.stop()); cameraStream = null;
+      if (cameraDialog) { cameraDialog.remove(); cameraDialog = null; }
+    }
     const content = document.createElement('div');
     const heading = document.createElement('h3');
     heading.textContent = 'ID photo and selfie';
@@ -107,36 +111,74 @@
       for (const kind of ['document','selfie']) {
         const label=document.createElement('label');
         label.textContent=kind==='selfie'?'Current selfie':'Identity document photo';
+        let selectedFile = null;
         const input=document.createElement('input');
-        input.type='file';input.accept='image/jpeg,image/png';
-        input.setAttribute('capture',kind==='selfie'?'user':'environment');
+        input.type='file';input.accept='image/jpeg,image/png';input.hidden=true;
+        const selected = line('No photo selected.');
+        const choose=document.createElement('button');choose.type='button';
+        choose.textContent=kind==='selfie'?'Upload existing selfie':'Upload existing ID photo';
+        choose.onclick=()=>input.click();
+        function select(file) { selectedFile=file; selected.textContent='Selected: '+file.name; status.textContent='Photo selected. Select Upload '+kind+' privately to save it.'; }
+        input.onchange=()=>{if(input.files[0])select(input.files[0]);};
+        const camera=document.createElement('button');camera.type='button';
+        camera.textContent=kind==='selfie'?'Take selfie':'Take ID photo';
+        camera.onclick=async()=>{
+          if(busy || !active)return;
+          stopCamera();
+          if(!navigator.mediaDevices?.getUserMedia){status.textContent='Camera is unavailable in this browser. Use Upload existing photo.';return;}
+          const panel=document.createElement('dialog');cameraDialog=panel;
+          panel.setAttribute('aria-label',camera.textContent);
+          panel.style.cssText='max-width:90vw;max-height:90vh;overflow:auto;background:#f7f3ea;color:#102439;border-radius:12px';
+          const video=document.createElement('video');video.autoplay=true;video.muted=true;video.playsInline=true;video.style.cssText='display:block;width:100%;max-height:60vh';
+          const take=document.createElement('button');take.type='button';take.textContent='Use this photo';take.disabled=true;
+          const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';cancel.onclick=()=>{stopCamera();status.textContent='Capture cancelled. No new photo was uploaded.';};
+          panel.addEventListener('cancel',()=>{stopCamera();status.textContent='Capture cancelled. No new photo was uploaded.';});
+          panel.append(video,take,cancel);host.append(panel);panel.showModal();
+          try {
+            const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:kind==='selfie'?'user':'environment'},audio:false});
+            if(!active || cameraDialog!==panel){stream.getTracks().forEach(track=>track.stop());return;}
+            cameraStream=stream;video.srcObject=stream;await video.play();
+            if(cameraDialog===panel)take.disabled=false;
+          }catch {if(cameraDialog===panel){stopCamera();status.textContent='Unable to open the camera. Allow camera access or upload an existing JPEG or PNG photo.';}return;}
+          take.onclick=()=>{
+            if(!video.videoWidth || !video.videoHeight)return;
+            take.disabled=true;
+            const canvas=document.createElement('canvas'),scale=Math.min(1,1600/Math.max(video.videoWidth,video.videoHeight));
+            canvas.width=Math.round(video.videoWidth*scale);canvas.height=Math.round(video.videoHeight*scale);
+            canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
+            canvas.toBlob(blob=>{if(active && cameraDialog===panel){if(blob)select(new File([blob],kind+'.jpg',{type:'image/jpeg'}));else status.textContent='Unable to read this photo. Please try again.';stopCamera();}},'image/jpeg',0.8);
+          };
+        };
         const button=document.createElement('button');
         button.type='button';button.textContent='Upload '+kind+' privately';
         button.onclick=()=>void run(async()=>{
-          const file=input.files[0];
-          if(!file || !['image/jpeg','image/png'].includes(file.type) || !file.size || file.size>5242880)throw Error('Choose a JPEG or PNG photo under 5 MB.');
+          const file=selectedFile;
+          if(!file){status.textContent='Take a photo or upload an existing photo first.';return;}
+          if(!['image/jpeg','image/png'].includes(file.type) || !file.size || file.size>5242880)throw Error('Choose a JPEG or PNG photo under 5 MB.');
           const path=subject+'/'+submissionId+'/'+kind+'/'+crypto.randomUUID()+(file.type==='image/png'?'.png':'.jpg');
           const result=await client.storage.from('identity-evidence').upload(path,file,{contentType:file.type,upsert:false});
           if(!active)return;
           if(result.error)throw Error(name(kind)+' was not uploaded. '+result.error.message);
-          input.value='';
+          input.value='';selectedFile=null;selected.textContent='No photo selected.';
           if(counts) { counts = {...counts,[kind]:counts[kind]+1}; progress(); }
           status.textContent=name(kind)+' uploaded and saved privately.';
           try { await load(); }
           catch { if(active) status.textContent=name(kind)+' was saved, but the saved-photo list could not refresh. Tap Check for uploaded photos. You do not need to upload it again.'; }
         });
-        label.append(input,button);content.append(label);
+        label.append(camera,choose,input,selected,button);content.append(label);
       }
     }
     function hide() {
       if(document.hidden) {
+        stopCamera();
         generation++; clear(); if(dialog && dialog.open)dialog.close();
         if(counts && (counts.document || counts.selfie)) previewStatus.textContent='Photo previews have been hidden for privacy. Your uploads remain saved. Tap Check for uploaded photos to view them again.';
       }
     }
     document.addEventListener('visibilitychange',hide);
-    const listener=client.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'||event==='SIGNED_IN'||event==='USER_UPDATED'){active=false;generation++;clear();if(dialog && dialog.open)dialog.close();host.replaceChildren(line('Your session changed. Reopen this page to continue.'));}});
+    const listener=client.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'||event==='SIGNED_IN'||event==='USER_UPDATED'){active=false;generation++;stopCamera();clear();if(dialog && dialog.open)dialog.close();host.replaceChildren(line('Your session changed. Reopen this page to continue.'));}});
     progress(); void run(load);
-    return ()=>{active=false;generation++;clear();if(dialog && dialog.open)dialog.close();document.removeEventListener('visibilitychange',hide);listener.data.subscription.unsubscribe();host.replaceChildren();};
+    return ()=>{active=false;generation++;stopCamera();clear();if(dialog && dialog.open)dialog.close();document.removeEventListener('visibilitychange',hide);listener.data.subscription.unsubscribe();host.replaceChildren();};
   };
 })();
+
