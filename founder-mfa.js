@@ -64,6 +64,6 @@
  document.addEventListener('visibilitychange',()=>{if(document.hidden)hide()});
  window.addEventListener('pagehide',()=>hide());
  client.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'||(owner&&session?.user.id!==owner)){hide();state={status:{is_founder:false},factors:[],pending:null,reauthenticated:false,message:''};render();}});
- render();void run(async()=>{await auth.ready;const u=await client.auth.getUser();owner=u.data.user?.id||'';return read();});
+ render();void run(async()=>{await auth.ready;const u=await client.auth.getUser();owner=u.data.user?.id||'';if(!owner)return{status:{is_founder:false},factors:[]};return read();});
 })();
 
