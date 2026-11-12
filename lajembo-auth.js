@@ -137,7 +137,7 @@
     if (!session) return;
     try {
       const security=await client.rpc('get_my_founder_security_status');
-      if(token===identityGeneration&&security.data?.is_founder){for(const host of [document.querySelector('.header-actions'),document.getElementById('menu')]){if(host){const a=document.createElement('a');a.dataset.founderMfaLink='true';a.href='founder-security.html';a.textContent='Two-factor authentication';host.append(a);}}}
+      if(token===identityGeneration&&security.data?.is_founder){for(const host of [document.querySelector('.header-actions'),document.getElementById('menu')]){if(host){const a=document.createElement('a');a.dataset.founderMfaLink='true';a.href='founder-security.html?manage=1';a.textContent='Two-factor authentication';host.append(a);}}}
       const profile = await client.rpc('get_my_customer_profile');
       if (token === identityGeneration && !profile.error) renderAccountIdentity(session, displayName(profile.data, session.user.user_metadata));
     } catch { /* Keep the signed-in account label if the profile is unavailable. */ }
