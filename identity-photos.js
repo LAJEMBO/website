@@ -18,6 +18,8 @@
     const images = document.createElement('div');
     const previewStatus = document.createElement('p');
     const refresh = document.createElement('button');
+    refresh.style.setProperty('background-color','#f5f5f5','important');
+    refresh.style.setProperty('color','#102A43','important');
     refresh.type = 'button'; refresh.textContent = 'Check for uploaded photos';
     content.replaceChildren(heading, checklist, status, refresh, previewStatus, images);
     if (upload) host.replaceChildren(content);
@@ -109,19 +111,28 @@
       consent.textContent='Upload a clear ID photo and a current selfie for manual identity review. Only you and authorized reviewers can access them. Uploading photos does not approve identity.';
       content.insertBefore(consent, checklist);
       for (const kind of ['document','selfie']) {
-        const label=document.createElement('label');
-        label.textContent=kind==='selfie'?'Current selfie':'Identity document photo';
+        const label=document.createElement('section');
+        label.style.cssText='display:grid;gap:12px;border-top:1px solid #dce2e8;padding-top:20px;margin-top:20px';
+        const title=document.createElement('h4');title.textContent=kind==='selfie'?'Selfie':'Identity document';title.style.margin='0';
+        label.append(title);
         let selectedFile = null;
         const input=document.createElement('input');
         input.type='file';input.accept='image/jpeg,image/png';input.hidden=true;
         const selected = line('No photo selected.');
         const choose=document.createElement('button');choose.type='button';
-        choose.textContent=kind==='selfie'?'Upload existing selfie':'Upload existing ID photo';
+        choose.textContent=kind==='selfie'?'Upload selfie':'Upload document';
+        choose.style.cssText='width:100%;margin:0;min-height:54px;border:0';
+        choose.style.setProperty('background-color','#f5f5f5','important');
+        choose.style.setProperty('color','#102A43','important');
         choose.onclick=()=>input.click();
-        function select(file) { selectedFile=file; selected.textContent='Selected: '+file.name; status.textContent='Photo selected. Select Upload '+kind+' privately to save it.'; }
+        function select(file) { selectedFile=file; input.value='';selected.textContent='Selected: '+file.name;void run(saveSelected); }
         input.onchange=()=>{if(input.files[0])select(input.files[0]);};
         const camera=document.createElement('button');camera.type='button';
-        camera.textContent=kind==='selfie'?'Take selfie':'Take ID photo';
+        camera.textContent='Take Photo';
+        camera.setAttribute('aria-label',kind==='selfie'?'Take selfie':'Take ID photo');
+        camera.style.cssText='width:100%;margin:0;min-height:54px;border:0';
+        camera.style.setProperty('background-color','#102A43','important');
+        camera.style.setProperty('color','#ffffff','important');
         camera.onclick=async()=>{
           if(busy || !active)return;
           stopCamera();
@@ -149,9 +160,7 @@
             canvas.toBlob(blob=>{if(active && cameraDialog===panel){if(blob)select(new File([blob],kind+'.jpg',{type:'image/jpeg'}));else status.textContent='Unable to read this photo. Please try again.';stopCamera();}},'image/jpeg',0.8);
           };
         };
-        const button=document.createElement('button');
-        button.type='button';button.textContent='Upload '+kind+' privately';
-        button.onclick=()=>void run(async()=>{
+        async function saveSelected(){
           const file=selectedFile;
           if(!file){status.textContent='Take a photo or upload an existing photo first.';return;}
           if(!['image/jpeg','image/png'].includes(file.type) || !file.size || file.size>5242880)throw Error('Choose a JPEG or PNG photo under 5 MB.');
@@ -159,13 +168,13 @@
           const result=await client.storage.from('identity-evidence').upload(path,file,{contentType:file.type,upsert:false});
           if(!active)return;
           if(result.error)throw Error(name(kind)+' was not uploaded. '+result.error.message);
-          input.value='';selectedFile=null;selected.textContent='No photo selected.';
+          input.value='';selectedFile=null;selected.textContent=name(kind)+' saved privately.';
           if(counts) { counts = {...counts,[kind]:counts[kind]+1}; progress(); }
           status.textContent=name(kind)+' uploaded and saved privately.';
           try { await load(); }
           catch { if(active) status.textContent=name(kind)+' was saved, but the saved-photo list could not refresh. Tap Check for uploaded photos. You do not need to upload it again.'; }
-        });
-        label.append(camera,choose,input,selected,button);content.append(label);
+        }
+        label.append(choose,camera,input,selected);content.append(label);
       }
     }
     function hide() {
@@ -181,4 +190,5 @@
     return ()=>{active=false;generation++;stopCamera();clear();if(dialog && dialog.open)dialog.close();document.removeEventListener('visibilitychange',hide);listener.data.subscription.unsubscribe();host.replaceChildren();};
   };
 })();
+
 
