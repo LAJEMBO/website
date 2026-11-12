@@ -3,16 +3,17 @@
  const auth=window.LajemboAuth,client=auth.client,host=document.getElementById('founderMfa');
  let state={status:null,factors:[],pending:null,reauthenticated:false,message:''},busy=false,alive=true,generation=0,owner='';
  const returns=new Set(['founder-clients.html','staff-identity-review.html']);
+ const manage=new URLSearchParams(location.search).get('manage')==='1';
  const requested=new URLSearchParams(location.search).get('return'),destination=returns.has(requested)?requested:'founder-clients.html';
  async function rpc(name){const r=await client.rpc(name);if(r.error)throw r.error;return r.data;}
- async function read(){const status=await rpc('get_my_founder_security_status');if(!status.is_founder)return{status,factors:[]};const f=await client.auth.mfa.listFactors();if(f.error)throw f.error;const factors=f.data.all.filter(x=>x.factor_type==='totp');return{status,factors,...(state.pending&&factors.some(x=>x.id===state.pending.id&&x.status==='verified')?{pending:null}:{})};}
+ async function read(){let status=await rpc('get_my_founder_security_status');if(status.is_founder&&status.verified_session&&!status.enabled)status=await rpc('activate_my_founder_mfa');if(!status.is_founder)return{status,factors:[]};const f=await client.auth.mfa.listFactors();if(f.error)throw f.error;const factors=f.data.all.filter(x=>x.factor_type==='totp');return{status,factors,...(state.pending&&factors.some(x=>x.id===state.pending.id&&x.status==='verified')?{pending:null}:{})};}
  function text(tag,value){const e=document.createElement(tag);e.textContent=value;return e;}
  function button(label,action,primary=false){const b=text('button',label);b.type='button';b.disabled=busy;b.onclick=action;b.style.setProperty('background-color','#f5f5f5','important');b.style.setProperty('color','#102A43','important');if(primary){b.style.setProperty('background-color','#102A43','important');b.style.setProperty('color','#fff','important');}return b;}
  function field(label,password=false){const wrap=document.createElement('label'),input=document.createElement('input');wrap.append(text('span',label),input);input.type=password?'password':'text';input.autocomplete=password?'current-password':'one-time-code';input.inputMode=password?'text':'numeric';input.maxLength=password?128:6;input.disabled=busy;return{wrap,input};}
  function submitOnEnter(input,action){input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();if(!busy)action();}});}
  async function run(action){if(busy||!alive)return;busy=true;state.message='Checking… Please wait.';const token=++generation;let timeout;render();
  const deadline=new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('The request took too long. Select Check status before trying again.')),30000)});
- try{const patch=await Promise.race([action(),deadline]);if(alive&&token===generation)state={...state,message:'',...patch};}
+ try{const patch=await Promise.race([action(),deadline]);if(alive&&token===generation){state={...state,message:'',...patch};if(state.status?.enabled&&state.status.verified_session&&!manage){location.replace(destination);return;}}}
  catch(e){if(alive&&token===generation)state.message=e.message||'Unable to complete this step. Please try again.';}
  finally{clearTimeout(timeout);if(alive&&token===generation){busy=false;render();host.querySelector('[role=status]')?.focus();}}
  }
@@ -26,7 +27,7 @@
   const feedback=text('p',state.message||'');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');feedback.tabIndex=-1;card.append(feedback);
   const verified=state.factors.filter(f=>f.status==='verified'),unfinished=state.factors.filter(f=>f.status==='unverified');
   card.append(text('p',state.status.enabled?'Founder protection is active.':'Founder protection has not been activated.'));
-  card.append(text('p','Keep a primary authenticator and a backup on a separate device or in a secure vault. If you lose the primary, use the backup to sign in.'));
+  card.append(text('p','Sign in with your password and one authenticator code. A backup authenticator is optional.'));
   if(verified.length&&!state.status.verified_session){
    const choice=document.createElement('select');choice.setAttribute('aria-label','Primary or backup authenticator');
    for(const f of verified){const o=text('option',f.friendly_name||'Authenticator');o.value=f.id;choice.append(o);}
@@ -42,7 +43,7 @@
     });
    },true));
   }
-  if((state.reauthenticated||state.status.enabled)&&verified.length<2&&(!verified.length||state.status.verified_session)&&!state.pending){
+  if((state.reauthenticated||state.status.enabled)&&(!verified.length||manage)&&verified.length<2&&(!verified.length||state.status.verified_session)&&!state.pending){
    card.append(text('p','Verifying a new authenticator may sign your other devices out. Sign back in there when setup is complete.'));
    card.append(button(verified.length?'Set up backup authenticator':'Set up primary authenticator',()=>void run(async()=>{
     if(!(await rpc('get_my_founder_security_status')).is_founder)throw Error('Founder access required.');
@@ -56,10 +57,9 @@
    if(state.pending.qr){const img=document.createElement('img');img.alt='Private authenticator setup QR code';img.style.cssText='display:block;width:220px;max-width:100%';img.src=state.pending.qr.startsWith('data:image/svg+xml')?state.pending.qr:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(state.pending.qr);card.append(img);}
    if(state.pending.secret){const details=document.createElement('details');details.append(text('summary','Show setup key'),text('code',state.pending.secret));card.append(details);}
    const code=field('Setup verification code');const submit=()=>{const value=code.input.value.trim(),id=state.pending.id;code.input.value='';void run(()=>verify(id,value));};submitOnEnter(code.input,submit);card.append(code.wrap,text('p','Enter the six-digit code, then select Verify setup or press Enter.'),button('Verify setup',submit,true),button('Discard unfinished setup',()=>void run(()=>discard(state.pending.id))));
-  }else for(const f of unfinished){if(!verified.length||state.status.verified_session)card.append(button('Enter code for '+(f.friendly_name||'unfinished authenticator'),()=>{state={...state,pending:{id:f.id,secret:'',qr:''},message:'Use the code from the authenticator you already added for this setup.'};render();},true));card.append(button('Discard unfinished setup: '+(f.friendly_name||'Authenticator'),()=>void run(()=>discard(f.id))));}
-  if(!state.status.enabled&&state.reauthenticated&&verified.length>=2&&state.status.verified_session)card.append(button('Activate Founder protection',()=>void run(async()=>{await rpc('activate_my_founder_mfa');return{pending:null,...await read()};}),true));
+  }else for(const f of (manage||!verified.length?unfinished:[])){if(!verified.length||state.status.verified_session)card.append(button('Enter code for '+(f.friendly_name||'unfinished authenticator'),()=>{state={...state,pending:{id:f.id,secret:'',qr:''},message:'Use the code from the authenticator you already added for this setup.'};render();},true));card.append(button('Discard unfinished setup: '+(f.friendly_name||'Authenticator'),()=>void run(()=>discard(f.id))));}
   if(state.status.enabled&&state.status.verified_session)card.append(button('Continue to Founder operations',()=>location.assign(destination),true));
-  card.append(text('p','If both authenticators are lost, recovery requires the Supabase project owner to verify ownership and restore access. A password alone cannot remove Founder protection.'));
+  card.append(text('p','If you lose access to your authenticator, account recovery requires ownership verification.'));
   card.append(button('Check status',()=>void run(read)));
  }
  function hide(){generation++;busy=false;state={...state,pending:state.pending?{id:state.pending.id,secret:'',qr:''}:null,message:'Setup key hidden for privacy. Use your authenticator code, or discard unfinished setup and start again.'};render();}
@@ -68,4 +68,5 @@
  client.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'||(owner&&session?.user.id!==owner)){hide();state={status:{is_founder:false},factors:[],pending:null,reauthenticated:false,message:''};render();}});
  render();void run(async()=>{await auth.ready;const u=await client.auth.getUser();owner=u.data.user?.id||'';if(!owner)return{status:{is_founder:false},factors:[]};return read();});
 })();
+
 
