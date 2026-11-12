@@ -31,6 +31,16 @@
     const headers=new Headers(options.headers||{});headers.set('Authorization','Bearer '+data.session.access_token);
     return fetch(input,{...options,headers});
   }
+  async function prepareFounderAccess(returnPage) {
+    await ready;
+    const r=await client.rpc('get_my_founder_security_status');
+    if(r.error)throw Error('Unable to check Founder security. Please retry.');
+    if(r.data?.is_founder&&r.data.challenge_required){
+      const page=['founder-clients.html','staff-identity-review.html'].includes(returnPage)?returnPage:'founder-clients.html';
+      location.replace('founder-security.html?return='+page);
+      throw Error('Verify your authenticator code to continue.');
+    }
+  }
   function normalizePhone(value) {const compact=value.replace(/[\s().-]/g,'');return /^\+[1-9]\d{7,14}$/.test(compact)?compact:/^0[789]\d{9}$/.test(compact)?'+234'+compact.slice(1):null;}
   async function setPassword(password,confirmation,phone) {
     if(password.length<12||password.length>128||!password.trim())throw Error('Use a password between 12 and 128 characters.');
@@ -67,6 +77,7 @@
   async function destination() {
     await ready;
     const requested=new URLSearchParams(location.search).get('return');
+    if(['founder-security.html','founder-clients.html','staff-identity-review.html'].includes(requested)){const s=await client.rpc('get_my_founder_security_status');if(s.data?.is_founder)return s.data.challenge_required?'founder-security.html?return='+requested:requested;}
     if(requested==='staff-identity-review.html'){
       const review=await client.rpc('is_staff_role',{required_roles:['founder','admin','trust_safety']});
       if(!review.error&&review.data===true)return requested;
@@ -77,7 +88,7 @@
     return provider?'provider-workspace.html':renter?'rentals.html':'index.html';
   }
   async function signOut() {const {error}=await client.auth.signOut({scope:'local'});if(error)throw error;mirror(null);}
-  window.LajemboAuth={client,ready,adoptSession,fetch:authorizedFetch,normalizePhone,setPassword,promptPassword,signIn,verifyRecovery,destination,signOut};
+  window.LajemboAuth={client,ready,prepareFounderAccess,adoptSession,fetch:authorizedFetch,normalizePhone,setPassword,promptPassword,signIn,verifyRecovery,destination,signOut};
   // Keep website password visibility consistent with the app, including new dialogs.
   function decoratePasswords(){
     document.querySelectorAll('input[type=password]').forEach(input=>{
@@ -111,7 +122,7 @@
     if (target) target.textContent = session ? 'Account · ' + name : 'Log in / Account';
     const menu = document.getElementById('menu');
     let identity = menu?.querySelector('[data-account-identity]');
-    if (!session) { identity?.remove(); return; }
+    if (!session) { identity?.remove(); document.querySelectorAll('[data-founder-mfa-link]').forEach(e=>e.remove()); return; }
     if (menu && !identity) {
       identity = document.createElement('p');
       identity.dataset.accountIdentity = 'true';
@@ -122,8 +133,11 @@
     if (identity) identity.textContent = 'Signed in as ' + name;
   }
   async function loadAccountIdentity(session, token) {
+    document.querySelectorAll('[data-founder-mfa-link]').forEach(e=>e.remove());
     if (!session) return;
     try {
+      const security=await client.rpc('get_my_founder_security_status');
+      if(token===identityGeneration&&security.data?.is_founder){for(const host of [document.querySelector('.header-actions'),document.getElementById('menu')]){if(host){const a=document.createElement('a');a.dataset.founderMfaLink='true';a.href='founder-security.html';a.textContent='Two-factor authentication';host.append(a);}}}
       const profile = await client.rpc('get_my_customer_profile');
       if (token === identityGeneration && !profile.error) renderAccountIdentity(session, displayName(profile.data, session.user.user_metadata));
     } catch { /* Keep the signed-in account label if the profile is unavailable. */ }
@@ -155,5 +169,6 @@
   }).catch(()=>{});
 
 })();
+
 
 

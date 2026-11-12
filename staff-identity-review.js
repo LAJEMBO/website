@@ -159,6 +159,7 @@
   });
   void auth.ready.then(async session => {
     if (!session) { element('login').hidden = false; message('Sign in to continue.'); return; }
+  await auth.prepareFounderAccess('staff-identity-review.html');
     reviewerUserId = session.user.id;
     const currentGeneration = generation;
     const allowed = await rpc('is_staff_role', { required_roles: ['founder', 'admin', 'trust_safety'] });
@@ -171,3 +172,4 @@
     await loadQueue();
   }).catch(error => { clearWorkspace(); message(error.message); });
 })();
+

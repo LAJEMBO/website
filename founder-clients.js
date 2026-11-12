@@ -55,8 +55,10 @@
  const authGeneration=generation;
  void auth.ready.then(async session=>{
   if(!session){el('login').hidden=false;el('status').textContent='Sign in to continue.';return}
+  await auth.prepareFounderAccess('founder-clients.html');
   if(await rpc('is_staff_role',{required_roles:['founder']})!==true)throw Error('Founder access required.');
   if(authGeneration!==generation)return;
   allowed=true;el('workspace').hidden=false;await load();
  }).catch(e=>{clear();el('status').textContent=e.message});
 })();
+
