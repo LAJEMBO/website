@@ -3,7 +3,35 @@
   window.LajemboIdentityPhotos = async function(host, subject, submissionId, upload) {
     const client = window.LajemboAuth.client;
     let active = true, busy = false, timer, counts = null, generation = 0, isOpen = upload;
-    let dialog, openButton, summary, cameraDialog, cameraStream;
+    let dialog, openButton, summary, cameraDialog, cameraStream, founder=false, recoveryButton, recoveryOpen=false;
+    const recovery=document.createElement('div');
+    async function evidenceRpc(name,args) {
+      const result=await client.rpc(name,args);if(result.error)throw result.error;return result.data;
+    }
+    async function loadRemoved() {
+      const token=generation;
+      const files=await evidenceRpc('founder_list_removed_identity_photos',{p_kind:subject,p_submission:submissionId});
+      if(!active || token!==generation)return;
+      recovery.replaceChildren();
+      if(!files.length)recovery.append(line('No removed files for this submission.'));
+      for(const file of files){
+        const row=document.createElement('div');
+        row.append(line((file.path.includes('/selfie/')?'Selfie':'ID photo')+' · Removed '+new Date(file.removed_at).toLocaleString()));
+        const restore=document.createElement('button');restore.type='button';restore.textContent='Restore file';
+        restore.onclick=()=>managePhoto(file.path,'restore');row.append(restore);recovery.append(row);
+      }
+    }
+    function managePhoto(path,action) {
+      if(busy || !active)return;
+      if(!window.confirm(action==='remove'?'Remove this file from the photo list? You can recover it from Removed files. Files linked to an identity approval are protected.':'Restore this file to the client’s identity photos?'))return;
+      void run(async()=>{
+        const token=generation;
+        await evidenceRpc('founder_manage_identity_photo',{p_kind:subject,p_submission:submissionId,p_path:path,p_action:action});
+        if(!active || token!==generation)return;
+        clear();await load();if(recoveryOpen)await loadRemoved();
+        status.textContent=action==='remove'?'File removed. It can be recovered from Removed files.':'File restored.';
+      });
+    }
     function stopCamera() {
       cameraStream?.getTracks().forEach(track => track.stop()); cameraStream = null;
       if (cameraDialog) { cameraDialog.remove(); cameraDialog = null; }
@@ -57,6 +85,15 @@
     async function load() {
       clear(); previewStatus.textContent = '';
       const token = generation;
+      if(!upload){
+        try{founder=await evidenceRpc('is_staff_role',{required_roles:['founder']})===true;}catch{founder=false;}
+        if(!active || token!==generation)return;
+        if(founder && !recoveryButton){
+          recoveryButton=document.createElement('button');recoveryButton.type='button';recoveryButton.textContent='Removed files';
+          recovery.hidden=true;recoveryButton.onclick=()=>{recoveryOpen=!recoveryOpen;recovery.hidden=!recoveryOpen;if(recoveryOpen)void run(loadRemoved);};
+          content.append(recoveryButton,recovery);
+        }
+      }
       const files = [], saved = {document: 0, selfie: 0};
       for (const kind of ['document', 'selfie']) {
         const prefix = subject + '/' + submissionId + '/' + kind;
@@ -84,7 +121,9 @@
         image.onerror = () => { if(active && token===generation && isOpen) previewStatus.textContent = 'A saved-photo preview could not be displayed. Tap Check for uploaded photos.'; };
         const caption = document.createElement('figcaption');
         caption.textContent = upload ? 'Saved ' + name(file.kind).toLowerCase() : file.path;
-        figure.append(image,caption); images.append(figure);
+        figure.append(image,caption);
+        if(founder && !upload){const remove=document.createElement('button');remove.type='button';remove.textContent='Remove file';remove.onclick=()=>managePhoto(file.path,'remove');figure.append(remove);}
+        images.append(figure);
       }
       if (active) {
         previewStatus.textContent = failed ? 'Saved photos were found, but a preview could not be loaded. Tap Check for uploaded photos.'
@@ -203,6 +242,7 @@
     return ()=>{active=false;generation++;stopCamera();clear();if(dialog && dialog.open)dialog.close();document.removeEventListener('visibilitychange',hide);listener.data.subscription.unsubscribe();host.replaceChildren();};
   };
 })();
+
 
 
 
